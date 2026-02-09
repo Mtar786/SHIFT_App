@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'device_page.dart';
+import 'history_screen.dart';
 
 class NavigationWrapper extends StatefulWidget {
   const NavigationWrapper({super.key});
@@ -11,23 +12,40 @@ class NavigationWrapper extends StatefulWidget {
 class _NavigationWrapperState extends State<NavigationWrapper> {
   int _currentIndex = 0;
 
-  // We move the list into a getter so we can pass the callback properly
   List<Widget> get _pages => [
-    // Tab 0: Device Page with the jump logic
-    DevicePage(onStartSession: () {
-      setState(() {
-        _currentIndex = 1; // Jumps to the Session tab
-      });
-    }),
-    const Center(child: Text("Live Session", style: TextStyle(color: Colors.white))), // Tab 1
-    const Center(child: Text("History", style: TextStyle(color: Colors.white))),      // Tab 2
-    const Center(child: Text("AI Coach", style: TextStyle(color: Colors.white))),     // Tab 3
-  ];
+        // Tab 0: Device Page
+        DevicePage(
+          onStartSession: () {
+            setState(() {
+              _currentIndex = 1; // Jump to Session tab
+            });
+          },
+        ),
+
+        // Tab 1: Live Session (placeholder for now)
+        const Center(
+          child: Text(
+            "Live Session",
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+
+        // Tab 2: History Page (REAL implementation)
+        const HistoryScreen(),
+
+        // Tab 3: AI Coach (placeholder for now)
+        const Center(
+          child: Text(
+            "AI Coach",
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Important: Use the list from the getter
+      backgroundColor: Colors.black,
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
