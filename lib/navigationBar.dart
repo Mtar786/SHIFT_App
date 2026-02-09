@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'device_page.dart';
 import 'history_screen.dart';
+import 'live_session_screen.dart';
+
 
 class NavigationWrapper extends StatefulWidget {
   const NavigationWrapper({super.key});
@@ -22,13 +24,9 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
           },
         ),
 
-        // Tab 1: Live Session (placeholder for now)
-        const Center(
-          child: Text(
-            "Live Session",
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
+        // Tab 1: Live Session
+        const LiveSessionScreen(),
+
 
         // Tab 2: History Page (REAL implementation)
         const HistoryScreen(),
