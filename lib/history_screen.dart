@@ -135,10 +135,10 @@ class HistoryScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFA7ABB3),
-                  ),
+                  // const Icon(
+                  //   Icons.chevron_right,
+                  //   color: Color(0xFFA7ABB3),
+                  // ),
                 ],
               ),
               const SizedBox(height: 6),
