@@ -1,308 +1,104 @@
-// lib/screens/history_screen.dart
 import 'package:flutter/material.dart';
+import 'session_manager.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
+  // The 'super.key' allows the ValueKey from the Navigator to work
   const HistoryScreen({super.key});
 
   @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  @override
   Widget build(BuildContext context) {
-    // Placeholder values (use variables, not fixed UI text)
-    final int totalSessions = 5;
-    final int avgDurationMinutes = 49;
-
-    final List<SessionItemData> sessions = <SessionItemData>[
-      SessionItemData(
-        title: 'Today, 2:30 PM',
-        duration: '45:32',
-        avgHrBpm: 148,
-        peakHeatPercent: 78,
-        alerts: 3,
-      ),
-      SessionItemData(
-        title: 'Yesterday, 10:15 AM',
-        duration: '62:18',
-        avgHrBpm: 142,
-        peakHeatPercent: 65,
-        alerts: 1,
-      ),
-    ];
-
-    final List<Widget> sessionTiles = sessions.map(_buildSessionTile).toList();
+    final sessions = SessionManager().history;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0C0F),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
+            children: [
               const Text(
                 'Session History',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Review your past performance data',
-                style: TextStyle(
-                  color: Color(0xFFA7ABB3),
-                  fontSize: 13,
-                ),
+              const SizedBox(height: 8),
+              Text(
+                'Total Sessions: ${sessions.length}',
+                style: const TextStyle(color: Colors.grey),
               ),
-              const SizedBox(height: 16),
-
-              // Stats cards row
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.analytics_outlined,
-                      label: 'Total Sessions',
-                      value: '$totalSessions',
-                      valueSuffix: '',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.schedule,
-                      label: 'Avg Duration',
-                      value: '$avgDurationMinutes',
-                      valueSuffix: 'minutes',
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 14),
-
-              // Session list
+              const SizedBox(height: 20),
               Expanded(
-                child: ListView.separated(
-                  itemCount: sessionTiles.length,
-                  separatorBuilder: (BuildContext context, int index) {
-                    return const SizedBox(height: 12);
-                  },
-                  itemBuilder: (BuildContext context, int index) {
-                    return sessionTiles[index];
-                  },
-                ),
+                child: sessions.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.separated(
+                        itemCount: sessions.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          return _buildSessionTile(sessions[index]);
+                        },
+                      ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Text(
+        "No sessions recorded.\nGo to 'Session' and hit 'End Session'.",
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.grey),
       ),
     );
   }
 
   Widget _buildSessionTile(SessionItemData data) {
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF14161B),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF232633)),
       ),
-      child:
-      InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          // TODO: Navigate to session detail screen
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              // Title row
-              Row(
-                children: <Widget>[
-                  const Icon(
-                    Icons.calendar_today_outlined,
-                    size: 16,
-                    color: Color(0xFFA7ABB3),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      data.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  // const Icon(
-                  //   Icons.chevron_right,
-                  //   color: Color(0xFFA7ABB3),
-                  // ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Duration: ${data.duration}',
-                style: const TextStyle(
-                  color: Color(0xFFA7ABB3),
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // Metrics row (Avg HR / Peak Heat / Alerts)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  _SmallMetric(
-                    label: 'Avg HR',
-                    value: '${data.avgHrBpm} BPM',
-                    valueColor: Colors.white,
-                  ),
-                  _SmallMetric(
-                    label: 'Peak Heat',
-                    value: '${data.peakHeatPercent}%',
-                    valueColor: Colors.white,
-                  ),
-                  _SmallMetric(
-                    label: 'Alerts',
-                    value: '${data.alerts}',
-                    valueColor: const Color(0xFFFF5252),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class SessionItemData {
-  SessionItemData({
-    required this.title,
-    required this.duration,
-    required this.avgHrBpm,
-    required this.peakHeatPercent,
-    required this.alerts,
-  });
-
-  final String title;
-  final String duration;
-  final int avgHrBpm;
-  final int peakHeatPercent;
-  final int alerts;
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.valueSuffix,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final String valueSuffix;
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Widget> valueLine = <Widget>[
-      Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 26,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ];
-
-    if (valueSuffix.isNotEmpty) {
-      valueLine.add(const SizedBox(width: 6));
-      valueLine.add(
-        Text(
-          valueSuffix,
-          style: const TextStyle(
-            color: Color(0xFFA7ABB3),
-            fontSize: 12,
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF14161B),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF232633)),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
+        children: [
           Row(
-            children: <Widget>[
-              Icon(icon, size: 18, color: const Color(0xFF3DDC97)),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFFA7ABB3),
-                  fontSize: 12,
-                ),
-              ),
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(data.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Text(data.duration, style: const TextStyle(color: Colors.blueAccent)),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(children: valueLine),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _miniMetric("Avg HR", "${data.avgHrBpm}"),
+              _miniMetric("Heat", "${data.peakHeatPercent}%"),
+              _miniMetric("Alerts", "${data.alerts}", isRed: data.alerts > 0),
+            ],
+          ),
         ],
       ),
     );
   }
-}
 
-class _SmallMetric extends StatelessWidget {
-  const _SmallMetric({
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  final String label;
-  final String value;
-  final Color valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 92,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFFA7ABB3),
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
+  Widget _miniMetric(String label, String value, {bool isRed = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        Text(value, style: TextStyle(color: isRed ? Colors.red : Colors.white, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 }

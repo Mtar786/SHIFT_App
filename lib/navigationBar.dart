@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'device_page.dart';
 import 'history_screen.dart';
 import 'live_session_screen.dart';
-import 'ai_chatbot.dart'; 
-
-
+import 'ai_chatbot.dart';
+// import 'device_page.dart'; // Uncomment this when you use it
 
 class NavigationWrapper extends StatefulWidget {
   const NavigationWrapper({super.key});
@@ -16,29 +14,20 @@ class NavigationWrapper extends StatefulWidget {
 class _NavigationWrapperState extends State<NavigationWrapper> {
   int _currentIndex = 0;
 
+  // We use a getter here so the ValueKey updates based on the current index
   List<Widget> get _pages => [
-        // Tab 0: Device Page
-        DevicePage(
-          onStartSession: () {
-            setState(() {
-              _currentIndex = 1; // Jump to Session tab
-            });
-          },
-        ),
+        // Tab 0: Home/Device (Placeholder for now)
+        const Center(child: Text("Home Page", style: TextStyle(color: Colors.white))),
 
         // Tab 1: Live Session
         const LiveSessionScreen(),
 
+        // Tab 2: History (KEY CHANGE HERE: remove 'const' and add 'key')
+        HistoryScreen(key: ValueKey('history_tab_$_currentIndex')),
 
-        // Tab 2: History Page (REAL implementation)
-        const HistoryScreen(),
-
-        // Tab 3: AI Coach (placeholder for now)
+        // Tab 3: AI Coach
         const AIChatbot(),
   ];
-        
-
-      
 
   @override
   Widget build(BuildContext context) {

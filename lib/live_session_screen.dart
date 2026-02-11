@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'session_manager.dart';
+import 'package:intl/intl.dart';
 
 class LiveSessionScreen extends StatefulWidget {
   const LiveSessionScreen({super.key});
@@ -53,12 +55,27 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     });
   }
 
-  void endSession() {
-    _timer?.cancel();
-    setState(() {
-      isLiveSession = false;
-    });
-  }
+
+// Inside _LiveSessionScreenState
+void endSession() {
+  _timer?.cancel();
+
+  // 1. Capture the data from the current session
+  final newSession = SessionItemData(
+    title: DateFormat('MMM d, h:mm a').format(DateTime.now()), // e.g. Feb 11, 2:33 PM
+    duration: getFormattedTime(_sessionSeconds),
+    avgHrBpm: 148, // Replace with your real logic later
+    peakHeatPercent: 70, // Replace with your real logic later
+    alerts: showWarning ? 1 : 0,
+  );
+
+  // 2. Save it to our Manager
+  SessionManager().addSession(newSession);
+
+  setState(() {
+    isLiveSession = false;
+  });
+}
 
   String getFormattedTime(int totalSeconds) {
     int minutes = totalSeconds ~/ 60;

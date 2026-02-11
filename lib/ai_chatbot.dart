@@ -11,22 +11,22 @@ class AIChatbot extends StatefulWidget {
 class _AIChatbotState extends State<AIChatbot> {
   final TextEditingController _controller = TextEditingController();
   late final GenerativeModel _model; // Defined here once
-  
+
   final List<Map<String, String>> _messages = [
     {
-      "role": "bot", 
+      "role": "bot",
       "text": "Hi! I'm your SHIFT AI Coach. I've analyzed your session history. Ready to optimize your performance?"
     }
   ];
 
-  final String _apiKey = "AIzaSyC3nLmkC6-IIn_7MynItVbYpNAI1lrucXU"; 
+  final String _apiKey = "AIzaSyC3nLmkC6-IIn_7MynItVbYpNAI1lrucXU";
 
   @override
   void initState() {
     super.initState();
     // Initialize the model once when the page opens
     _model = GenerativeModel(
-      model: 'gemini-1.5-flash', 
+      model: 'gemini-3-flash-preview',
       apiKey: _apiKey,
       systemInstruction: Content.system(
         "You are the SHIFT AI Performance Coach. You analyze data from the SHIFT Vest, "
