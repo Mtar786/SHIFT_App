@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'device_page.dart';
 import 'history_screen.dart';
 import 'live_session_screen.dart';
+import 'ai_chatbot.dart'; 
+
 
 
 class NavigationWrapper extends StatefulWidget {
@@ -32,13 +34,11 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
         const HistoryScreen(),
 
         // Tab 3: AI Coach (placeholder for now)
-        const Center(
-          child: Text(
-            "AI Coach",
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      ];
+        const AIChatbot(),
+  ];
+        
+
+      
 
   @override
   Widget build(BuildContext context) {

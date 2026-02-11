@@ -17,7 +17,7 @@ class _DevicePageState extends State<DevicePage> {
   void handleConnect() {
     setState(() {
       isConnected = true;
-      batteryLevel = 0.99;
+      batteryLevel = 0.1;
     });
   }
 
@@ -139,7 +139,7 @@ class _DevicePageState extends State<DevicePage> {
                 const SizedBox(height: 12),
                 _sensorContainer(_sensorRow(Icons.grid_3x3, "3-Axis Accelerometer", true)),
                 const SizedBox(height: 12),
-                _sensorContainer(_sensorRow(Icons.thermostat, "Temp/Humidity", false)),
+                _sensorContainer(_sensorRow(Icons.thermostat, "Temp/Humidity", true)),
               ],
             ),
           ),
