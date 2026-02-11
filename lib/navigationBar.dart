@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'history_screen.dart';
 import 'live_session_screen.dart';
 import 'ai_chatbot.dart';
-// import 'device_page.dart'; // Uncomment this when you use it
+import 'device_page.dart'; // Ensure this matches your filename
 
 class NavigationWrapper extends StatefulWidget {
   const NavigationWrapper({super.key});
@@ -14,15 +14,22 @@ class NavigationWrapper extends StatefulWidget {
 class _NavigationWrapperState extends State<NavigationWrapper> {
   int _currentIndex = 0;
 
-  // We use a getter here so the ValueKey updates based on the current index
+  // We use a getter to return the list of pages.
+  // This ensures the current _currentIndex is available for keys if needed.
   List<Widget> get _pages => [
-        // Tab 0: Home/Device (Placeholder for now)
-        const Center(child: Text("Home Page", style: TextStyle(color: Colors.white))),
+        // Tab 0: Home / Device Management
+        DevicePage(
+          onStartSession: () {
+            setState(() {
+              _currentIndex = 1; // Switches to the Live Session tab
+            });
+          },
+        ),
 
         // Tab 1: Live Session
         const LiveSessionScreen(),
 
-        // Tab 2: History (KEY CHANGE HERE: remove 'const' and add 'key')
+        // Tab 2: History (Refreshes every time the tab is selected)
         HistoryScreen(key: ValueKey('history_tab_$_currentIndex')),
 
         // Tab 3: AI Coach

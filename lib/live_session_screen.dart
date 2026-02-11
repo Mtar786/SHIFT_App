@@ -1,7 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'session_manager.dart';
 import 'package:intl/intl.dart';
+import 'session_manager.dart';
 
 class LiveSessionScreen extends StatefulWidget {
   const LiveSessionScreen({super.key});
@@ -11,20 +12,21 @@ class LiveSessionScreen extends StatefulWidget {
 }
 
 class _LiveSessionScreenState extends State<LiveSessionScreen> {
-  // ---------------------------------------------------------------------------
-  // STATE VARIABLES
-  // ---------------------------------------------------------------------------
+  // --- SESSION STATE ---
   bool isLiveSession = true;
   Timer? _timer;
-
+  final Random _random = Random();
   int _sessionSeconds = 0;
-  bool showWarning = true;
+  bool showWarning = false;
 
-  // Mock data for the summary view
-  final String _mockAvgHr = "132 bpm";
-  final String _mockMaxHr = "165 bpm";
-  final String _mockAvgTemp = "37.5°C";
-  final String _mockAvgBp = "120/80 mmHg";
+  // --- DYNAMIC DATA ---
+  int _currentHeartRate = 75;
+  int _currentSpO2 = 98;
+  int _currentHeatStress = 32;
+  int _currentBreathing = 16;
+
+  // Track HR to calculate a real average at the end
+  final List<int> _hrHistory = [];
 
   @override
   void initState() {
@@ -38,57 +40,71 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     super.dispose();
   }
 
+  // --- LOGIC: SIMULATED SENSOR DATA ---
   void startTimer() {
     _timer?.cancel();
     setState(() {
       _sessionSeconds = 0;
       isLiveSession = true;
-      showWarning = true;
+      _hrHistory.clear();
+      _hrHistory.add(_currentHeartRate);
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           _sessionSeconds++;
+
+          // Simulate realistic sensor drift
+          _currentHeartRate = _simulateSensor(_currentHeartRate, 60, 185, 3);
+          _currentSpO2 = _simulateSensor(_currentSpO2, 94, 100, 1);
+          _currentHeatStress = _simulateSensor(_currentHeatStress, 25, 95, 2);
+          _currentBreathing = _simulateSensor(_currentBreathing, 12, 30, 1);
+
+          _hrHistory.add(_currentHeartRate);
+
+          // Logic: Show Warning if metrics are in danger zones
+          showWarning = (_currentHeatStress > 80 || _currentHeartRate > 160);
         });
       }
     });
   }
 
+  int _simulateSensor(int current, int min, int max, int step) {
+    int drift = _random.nextInt(step * 2 + 1) - step;
+    return (current + drift).clamp(min, max);
+  }
 
-// Inside _LiveSessionScreenState
-void endSession() {
-  _timer?.cancel();
+  void endSession() {
+    _timer?.cancel();
 
-  // 1. Capture the data from the current session
-  final newSession = SessionItemData(
-    title: DateFormat('MMM d, h:mm a').format(DateTime.now()), // e.g. Feb 11, 2:33 PM
-    duration: getFormattedTime(_sessionSeconds),
-    avgHrBpm: 148, // Replace with your real logic later
-    peakHeatPercent: 70, // Replace with your real logic later
-    alerts: showWarning ? 1 : 0,
-  );
+    // Calculate actual Average HR from the session
+    int avgHr = _hrHistory.isEmpty ? 0 : (_hrHistory.reduce((a, b) => a + b) ~/ _hrHistory.length);
 
-  // 2. Save it to our Manager
-  SessionManager().addSession(newSession);
+    final newSession = SessionItemData(
+      title: DateFormat('MMM d, h:mm a').format(DateTime.now()),
+      duration: _getFormattedTime(_sessionSeconds),
+      avgHrBpm: avgHr,
+      peakHeatPercent: _currentHeatStress, // Using last recorded heat stress
+      alerts: showWarning ? 1 : 0,
+    );
 
-  setState(() {
-    isLiveSession = false;
-  });
-}
+    SessionManager().addSession(newSession);
+    setState(() => isLiveSession = false);
+  }
 
-  String getFormattedTime(int totalSeconds) {
+  String _getFormattedTime(int totalSeconds) {
     int minutes = totalSeconds ~/ 60;
     int seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  // --- UI: BUILD METHODS ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        // Wrap everything in a ScrollView so the whole page scrolls
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: isLiveSession ? _buildLiveView() : _buildSummaryView(),
@@ -97,9 +113,6 @@ void endSession() {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // VIEW 1: LIVE SESSION (SCROLLABLE)
-  // ---------------------------------------------------------------------------
   Widget _buildLiveView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,314 +124,145 @@ void endSession() {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Live Session',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Timer
-                Text(
-                  getFormattedTime(_sessionSeconds),
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A5CFF), // Bright Blue
-                  ),
-                ),
+                const Text('Live Session', style: TextStyle(color: Colors.white, fontSize: 18)),
+                Text(_getFormattedTime(_sessionSeconds),
+                    style: const TextStyle(color: Color(0xFF1A5CFF), fontSize: 32, fontWeight: FontWeight.bold)),
               ],
             ),
-            Row(
-              children: const [
-                Icon(Icons.circle, color: Colors.red, size: 12),
+            const Row(
+              children: [
+                Icon(Icons.circle, color: Colors.red, size: 10),
                 SizedBox(width: 8),
-                Text('Recording', style: TextStyle(color: Colors.grey)),
+                Text('REC', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
               ],
-            ),
+            )
           ],
         ),
         const SizedBox(height: 20),
 
         // Warning Banner
-        if (showWarning)
-          Container(
-            margin: const EdgeInsets.only(bottom: 20), // Add spacing if visible
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF3D210B), // Dark Brown/Orange bg
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD67B18)), // Orange border
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Color(0xFFD67B18)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Heat Stress Warning',
-                        style: TextStyle(
-                          color: Color(0xFFD67B18),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Your heat stress level is elevated. Consider slowing down and hydrating.',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => setState(() => showWarning = false),
-                  child: const Icon(Icons.close, color: Color(0xFFD67B18), size: 20),
-                ),
-              ],
-            ),
-          ),
+        if (showWarning) _buildWarningBanner(),
 
-        // Metrics Grid
-        // Note: No 'Expanded' here. Just let the Column grow.
+        // Metric Grid
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _LiveMetricCard(
                 title: 'Heart Rate',
-                value: '148',
+                value: '$_currentHeartRate',
                 unit: 'BPM',
-                status: 'Elevated',
-                icon: Icons.favorite_border,
-                color: Color(0xFFD67B18), // Orange
+                icon: Icons.favorite,
+                // Logic: Red if > 150, Orange if > 120, else Green
+                color: _currentHeartRate > 150 ? Colors.red : (_currentHeartRate > 120 ? Colors.orange : Colors.green),
               ),
             ),
-            SizedBox(width: 16),
+            const SizedBox(width: 16),
             Expanded(
               child: _LiveMetricCard(
                 title: 'Blood O₂',
-                value: '97',
+                value: '$_currentSpO2',
                 unit: '%',
-                status: 'Good',
-                icon: Icons.water_drop_outlined,
-                color: Color(0xFF007F5F), // Green
+                icon: Icons.water_drop,
+                color: _currentSpO2 < 95 ? Colors.orange : Colors.green,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _LiveMetricCard(
                 title: 'Heat Stress',
-                value: '68',
+                value: '$_currentHeatStress',
                 unit: '%',
-                status: 'Warning',
                 icon: Icons.thermostat,
-                color: Color(0xFFD67B18), // Orange
+                color: _currentHeatStress > 75 ? Colors.red : (_currentHeatStress > 50 ? Colors.orange : Colors.green),
               ),
             ),
-            SizedBox(width: 16),
+            const SizedBox(width: 16),
             Expanded(
               child: _LiveMetricCard(
                 title: 'Breathing',
-                value: '25',
+                value: '$_currentBreathing',
                 unit: 'BrPM',
-                status: 'Normal',
                 icon: Icons.air,
-                color: Color(0xFF007F5F), // Green
+                color: Colors.green,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 40),
 
-        // Activity Intensity
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1F24),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD67B18)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.show_chart, color: Color(0xFFD67B18)),
-                      SizedBox(width: 8),
-                      Text('Activity Intensity', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                  const Text('70%', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: const LinearProgressIndicator(
-                  value: 0.7,
-                  backgroundColor: Color(0xFF13181D),
-                  color: Color(0xFFD67B18),
-                  minHeight: 8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text('High', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 32), // Space before button
-
-        // End Session Button (At the very bottom of the scrollable list)
         SizedBox(
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
             onPressed: endSession,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD30000), // Red
+              backgroundColor: const Color(0xFFD30000),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            child: const Text(
-              'End Session',
-              style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-            ),
+            child: const Text('End Session', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
           ),
         ),
-        const SizedBox(height: 20), // Bottom padding for safety
       ],
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // VIEW 2: SESSION SUMMARY (SCROLLABLE)
-  // ---------------------------------------------------------------------------
   Widget _buildSummaryView() {
+    int avgHr = _hrHistory.isEmpty ? 0 : (_hrHistory.reduce((a, b) => a + b) ~/ _hrHistory.length);
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'SHIFT',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: Colors.white,
-            letterSpacing: 1.2
-          )
-        ),
-        const SizedBox(height: 20),
-
-        // Main Summary Card
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF13181D), // Dark Card Bg
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Session Summary',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white
-                )
-              ),
-              const SizedBox(height: 24),
-
-              // Metrics
-              Row(
-                children: [
-                  Expanded(
-                    child: _SummaryMetricCard(
-                      title: 'Duration',
-                      value: getFormattedTime(_sessionSeconds),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _SummaryMetricCard(
-                      title: 'Avg Heart Rate',
-                      value: _mockAvgHr,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _SummaryMetricCard(
-                      title: 'Max Heart Rate',
-                      value: _mockMaxHr,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _SummaryMetricCard(
-                      title: 'Avg Temperature',
-                      value: _mockAvgTemp,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _SummaryMetricCard(
-                title: 'Avg Blood Pressure',
-                value: _mockAvgBp,
-                isWide: true,
-              ),
-
-              const SizedBox(height: 32), // Space before button
-
-              // Start New Session Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: startTimer, // Go back to live view & restart
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A5CFF), // Blue
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text(
-                    'Start New Session',
-                    style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
+        const Text("SHIFT Summary", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 24),
+        _SummaryMetricCard(title: "Duration", value: _getFormattedTime(_sessionSeconds)),
+        const SizedBox(height: 12),
+        _SummaryMetricCard(title: "Average Heart Rate", value: "$avgHr BPM"),
+        const SizedBox(height: 12),
+        _SummaryMetricCard(title: "Peak Heat Stress", value: "$_currentHeatStress%"),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: startTimer,
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+            child: const Text("Start New Session", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ),
-        const SizedBox(height: 20), // Bottom padding
       ],
+    );
+  }
+
+  Widget _buildWarningBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.warning, color: Colors.red),
+          SizedBox(width: 12),
+          Text("HIGH STRESS DETECTED", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 }
 
-// -----------------------------------------------------------------------------
-// HELPER WIDGETS
-// -----------------------------------------------------------------------------
+// --- HELPER COMPONENTS ---
 
 class _LiveMetricCard extends StatelessWidget {
   final String title;
   final String value;
   final String unit;
-  final String status;
   final IconData icon;
   final Color color;
 
@@ -426,7 +270,6 @@ class _LiveMetricCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.unit,
-    required this.status,
     required this.icon,
     required this.color,
   });
@@ -443,23 +286,11 @@ class _LiveMetricCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Color(0xFF8A94A6))),
-            ],
-          ),
+          Icon(icon, color: color, size: 24),
           const SizedBox(height: 12),
-          Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(unit, style: const TextStyle(color: Color(0xFF8A94A6), fontSize: 12)),
-              const Text(' • ', style: TextStyle(color: Color(0xFF8A94A6))),
-              Text(status, style: TextStyle(color: color, fontSize: 12)),
-            ],
-          ),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          Text("$unit • status", style: TextStyle(color: color, fontSize: 12)),
+          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         ],
       ),
     );
@@ -469,29 +300,21 @@ class _LiveMetricCard extends StatelessWidget {
 class _SummaryMetricCard extends StatelessWidget {
   final String title;
   final String value;
-  final bool isWide;
 
-  const _SummaryMetricCard({
-    required this.title,
-    required this.value,
-    this.isWide = false,
-  });
+  const _SummaryMetricCard({required this.title, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: isWide ? double.infinity : null,
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF252A30),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFF14161B), borderRadius: BorderRadius.circular(12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Color(0xFF8A94A6), fontSize: 12)),
-          const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
         ],
       ),
     );
