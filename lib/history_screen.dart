@@ -106,7 +106,8 @@ class HistoryScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFF232633)),
       ),
-      child: InkWell(
+      child:
+      InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () {
           // TODO: Navigate to session detail screen
@@ -135,10 +136,10 @@ class HistoryScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFA7ABB3),
-                  ),
+                  // const Icon(
+                  //   Icons.chevron_right,
+                  //   color: Color(0xFFA7ABB3),
+                  // ),
                 ],
               ),
               const SizedBox(height: 6),
