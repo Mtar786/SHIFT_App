@@ -16,7 +16,7 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
     int _currentIndex = 0;
     
     List<Widget> get _pages => [
-        // Tab 0: Home / Device Management
+        // Tab 0: Home/Device Management
         DevicePage(
           onStartSession: () {
             setState(() {
