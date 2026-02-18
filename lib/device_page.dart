@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class DevicePage extends StatefulWidget {
   final VoidCallback onStartSession;
@@ -12,190 +13,249 @@ class DevicePage extends StatefulWidget {
 }
 
 class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
-  // Bluetooth state variables
-  BluetoothDevice? connectedDevice;
-  BluetoothCharacteristic? sensorChar;
+  final FlutterReactiveBle ble = FlutterReactiveBle();
 
-  // Explicitly managed subscriptions
-  StreamSubscription? connectionSubscription;
-  StreamSubscription? dataSubscription;
   StreamSubscription? scanSubscription;
+  StreamSubscription? connectionSubscription;
+  StreamSubscription? notifySubscription;
 
-  bool isConnected = false;
   bool isScanning = false;
+  bool isConnected = false;
   double batteryLevel = 0.0;
 
-  // UUIDs matching Raspberry Pi Python Server
-  final String serviceUuid = "B001";
-  final String charUuid = "C001";
+  // Short strings for matching discovered UUIDs (case-insensitive, as logged)
+  final String serviceUuidShort = "b001";
+  final String charUuidShort   = "c001";
+
+  // Full Uuid objects for QualifiedCharacteristic (required by the library)
+  final Uuid serviceUuidFull = Uuid.parse("0000b001-0000-1000-8000-00805f9b34fb");
+  final Uuid charUuidFull   = Uuid.parse("0000c001-0000-1000-8000-00805f9b34fb");
+
+  QualifiedCharacteristic? targetCharacteristic;
+
+  bool _isCleaningUp = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _cleanupBluetooth(); // Nuclear teardown on page exit
+    _cleanupBle();
     super.dispose();
   }
 
-  // --- Tier 1: Aggressive Memory Protection ---
-  void _cleanupBluetooth() {
-    debugPrint("🚨 Cleaning up all Bluetooth resources...");
-    dataSubscription?.cancel();
-    connectionSubscription?.cancel();
-    scanSubscription?.cancel();
-
-    dataSubscription = null;
-    connectionSubscription = null;
-    scanSubscription = null;
-
-    sensorChar = null;
-    connectedDevice = null;
+  Future<void> _checkPermissions() async {
+    await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // If the app is minimized, we MUST kill the data stream.
-    // iOS kills apps that try to update UI/Memory while in the background.
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
-      if (FlutterBluePlus.isScanningNow) FlutterBluePlus.stopScan();
-      dataSubscription?.cancel();
-      dataSubscription = null;
-      sensorChar = null;
+      debugPrint("App paused/detached → cleaning BLE");
+      _cleanupBle();
     } else if (state == AppLifecycleState.resumed) {
-      // Safely re-attach if we are still connected
-      if (isConnected && sensorChar != null) {
-        _listenToSensorData(sensorChar!);
+      debugPrint("App resumed → checking connection");
+      if (isConnected && targetCharacteristic != null) {
+        _startListening();
       }
     }
   }
 
-  // --- Bluetooth Logic ---
-
   Future<void> handleConnect() async {
-    // 1. Check if we're already connecting to prevent "Listener Stacking"
     if (isScanning || isConnected) return;
-
-    await FlutterBluePlus.adapterState
-        .where((s) => s == BluetoothAdapterState.on)
-        .first;
 
     setState(() => isScanning = true);
 
     try {
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
-
-      scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
-        for (ScanResult r in results) {
-          if (r.advertisementData.advName == "SHIFT_Vest") {
-            await FlutterBluePlus.stopScan();
-            scanSubscription?.cancel();
-            _establishConnection(r.device);
-            break;
-          }
+      scanSubscription = ble.scanForDevices(
+        withServices: [], // Scan all devices; filter by name
+        scanMode: ScanMode.lowLatency,
+      ).listen((device) {
+        if (device.name == "SHIFT_Vest") {
+          debugPrint("Found SHIFT_Vest: ${device.id}");
+          scanSubscription?.cancel();
+          setState(() => isScanning = false);
+          _connectToDevice(device);
         }
+      }, onError: (e) {
+        debugPrint("Scan error: $e");
+        if (mounted) setState(() => isScanning = false);
       });
+
+      // Timeout scan
+      await Future.delayed(const Duration(seconds: 15));
+      if (isScanning && mounted) {
+        scanSubscription?.cancel();
+        setState(() => isScanning = false);
+      }
     } catch (e) {
-      debugPrint("Scan Error: $e");
+      debugPrint("Scan setup error: $e");
       if (mounted) setState(() => isScanning = false);
     }
   }
 
-  void _establishConnection(BluetoothDevice device) async {
+  Future<void> _connectToDevice(DiscoveredDevice device) async {
     try {
-      // mtu: null is mandatory on iOS to prevent kernel invalidation crashes
-      await device.connect(autoConnect: false, mtu: null, license: License.free);
-      connectedDevice = device;
+      debugPrint("Connecting to ${device.name} (${device.id})...");
 
-      connectionSubscription = device.connectionState.listen((state) {
-        if (mounted) {
-          setState(() {
-            isConnected = state == BluetoothConnectionState.connected;
-            if (!isConnected) {
-              isScanning = false;
-              _cleanupBluetooth();
-            }
-          });
+      connectionSubscription = ble.connectToDevice(
+        id: device.id,
+        connectionTimeout: const Duration(seconds: 10),
+      ).listen((update) {
+        if (!mounted) return;
+
+        debugPrint("Connection state: ${update.connectionState}");
+        setState(() {
+          isConnected = update.connectionState == DeviceConnectionState.connected;
+        });
+
+        if (isConnected) {
+          _discoverAndSubscribe(device.id);
+        } else if (update.connectionState == DeviceConnectionState.disconnected) {
+          _cleanupBle();
         }
+      }, onError: (e) {
+        debugPrint("Connection error: $e");
+        _cleanupBle();
       });
+    } catch (e) {
+      debugPrint("Connect failed: $e");
+      _cleanupBle();
+    }
+  }
 
-      // Increased stabilization delay for iOS 18
-      await Future.delayed(const Duration(milliseconds: 800));
+  Future<void> _discoverAndSubscribe(String deviceId) async {
+    try {
+      debugPrint("Discovering services for $deviceId...");
+      final services = await ble.discoverServices(deviceId);
 
-      if (connectedDevice == null) return;
-      List<BluetoothService> services = await device.discoverServices();
+      debugPrint("Discovered ${services.length} services:");
+      for (var service in services) {
+        debugPrint(" - Service: ${service.serviceId}");
+        for (var char in service.characteristicIds) {
+          debugPrint("   - Char: $char");
+        }
+      }
 
       for (var service in services) {
-        if (service.uuid.toString().toUpperCase().contains(serviceUuid)) {
-          for (var char in service.characteristics) {
-            if (char.uuid.toString().toUpperCase().contains(charUuid)) {
-              sensorChar = char;
-              _listenToSensorData(char);
+        // service.serviceId is String → .toLowerCase() is valid
+        if (service.serviceId.toString().toLowerCase() == serviceUuidShort.toLowerCase()) {
+          debugPrint("Found matching service (short): ${service.serviceId}");
+
+          for (var char in service.characteristicIds) {
+            // char is also String → .toLowerCase() works
+            if (char.toString().toLowerCase() == charUuidShort.toLowerCase()) {
+              debugPrint("Found matching characteristic (short): $char");
+
+              targetCharacteristic = QualifiedCharacteristic(
+                serviceId: serviceUuidFull,       // Use full Uuid here
+                characteristicId: charUuidFull,   // Use full Uuid here
+                deviceId: deviceId,
+              );
+
+              // Subscribe and start listening
+              notifySubscription?.cancel();
+              notifySubscription = ble.subscribeToCharacteristic(targetCharacteristic!).listen(
+                (value) {
+                  if (value.isNotEmpty && mounted && isConnected) {
+                    setState(() {
+                      batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
+                    });
+                    // try {
+                    //   int firstByte = value[0];
+                    //   debugPrint("  BLE Data: '$firstByte'");
+                    // } catch (_) {
+                    //   debugPrint("  (not valid UTF-8 text)");
+                    // }
+                  }
+                },
+                onError: (e) {
+                  debugPrint("Notification error: $e");
+                  _cleanupBle();
+                },
+              );
+
+              debugPrint("Notifications enabled and listening OK");
+              return;
             }
           }
         }
       }
+
+      debugPrint("Target service/characteristic not found (checked short strings)");
     } catch (e) {
-      debugPrint("Connection Error: $e");
-      if (mounted) setState(() => isScanning = false);
+      debugPrint("Discover/Subscribe error: $e");
+      _cleanupBle();
     }
   }
 
-  void _listenToSensorData(BluetoothCharacteristic char) async {
-    // 2. Kill any "Ghost" listener before starting a new one
-    await dataSubscription?.cancel();
-
-    try {
-      await char.setNotifyValue(true);
-      dataSubscription = char.onValueReceived.listen((value) {
-        if (value.isNotEmpty && mounted && isConnected) {
-          setState(() {
-            // value[0] / 100.0 clamped to ensure it never causes a NaN UI crash
-            batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
-          });
-        }
-      });
-    } catch (e) {
-      debugPrint("Data Listen Error: $e");
+  void _startListening() {
+    if (targetCharacteristic == null) {
+      debugPrint("Cannot start listening: no target characteristic");
+      return;
     }
+
+    // In this library, subscribeToCharacteristic() already gives us the stream
+    // We already set notifySubscription above — so this method can be minimal
+    // or used for reconnection logic later.
+    // For now, it's mostly a guard / future-proof placeholder
+
+    debugPrint("Listening started for ${targetCharacteristic!.characteristicId}");
   }
 
-  // --- Tier 2: Atomic Disconnect (Prevents EXC_BAD_ACCESS) ---
   Future<void> handleDisconnect() async {
-    debugPrint("🚨 Starting Atomic Disconnect...");
+    debugPrint("🚨 User requested disconnect");
+    await _cleanupBle();
+  }
 
-    // 1. Silence Dart listeners first
-    await dataSubscription?.cancel();
-    dataSubscription = null;
-    sensorChar = null;
+  Future<void> _cleanupBle() async {
+    if (_isCleaningUp) return;
+    _isCleaningUp = true;
 
-    // 2. Store device in a local variable then nullify global ref immediately
-    final deviceToKill = connectedDevice;
+    debugPrint("🔥 BLE cleanup started");
 
-    setState(() {
-      isConnected = false;
-      isScanning = false;
-      connectedDevice = null;
-    });
-
-    // 3. The "Watchdog Window": Wait 1 second for iOS thread to finish its loop
-    await Future.delayed(const Duration(seconds: 1));
-
-    // 4. Teardown the native connection
-    try {
-      if (deviceToKill != null) {
-        await deviceToKill.disconnect().timeout(
-          const Duration(milliseconds: 500),
-          onTimeout: () => debugPrint("Safe Timeout: Hardware will idle-disconnect."),
-        );
+    // Best-effort unsubscribe — ignore if already off or char invalid
+    if (targetCharacteristic != null) {
+      try {
+        // flutter_reactive_ble doesn't have explicit unsubscribe; cancel the stream
+        // But to be explicit, we can call setNotifyValue(false) via write if needed
+        // For now, just cancel the subscription stream
+        notifySubscription?.cancel();
+        notifySubscription = null;
+        debugPrint("Subscription stream cancelled");
+      } catch (e) {
+        debugPrint("Unsubscribe/cleanup warning (ignored): $e");
       }
-    } catch (e) {
-      debugPrint("Native disconnect handled silently: $e");
     }
+
+    connectionSubscription?.cancel();
+    connectionSubscription = null;
+
+    scanSubscription?.cancel();
+    scanSubscription = null;
+
+    targetCharacteristic = null;
+
+    if (mounted) {
+      setState(() {
+        isConnected = false;
+        isScanning = false;
+        batteryLevel = 0.0;
+      });
+    }
+
+    debugPrint("✅ Cleanup finished");
+    _isCleaningUp = false;
   }
 
   // --- UI Methods (Original Design) ---
