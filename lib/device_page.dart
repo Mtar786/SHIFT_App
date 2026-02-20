@@ -25,11 +25,13 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
   // Short strings for matching discovered UUIDs (case-insensitive, as logged)
   final String serviceUuidShort = "b001";
-  final String charUuidShort   = "c001";
+  final String charUuidShort = "c001";
 
   // Full Uuid objects for QualifiedCharacteristic (required by the library)
-  final Uuid serviceUuidFull = Uuid.parse("0000b001-0000-1000-8000-00805f9b34fb");
-  final Uuid charUuidFull   = Uuid.parse("0000c001-0000-1000-8000-00805f9b34fb");
+  final Uuid serviceUuidFull = Uuid.parse(
+    "0000b001-0000-1000-8000-00805f9b34fb",
+  );
+  final Uuid charUuidFull = Uuid.parse("0000c001-0000-1000-8000-00805f9b34fb");
 
   QualifiedCharacteristic? targetCharacteristic;
 
@@ -60,7 +62,8 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       debugPrint("App paused/detached → cleaning BLE");
       _cleanupBle();
     } else if (state == AppLifecycleState.resumed) {
@@ -77,20 +80,25 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     setState(() => isScanning = true);
 
     try {
-      scanSubscription = ble.scanForDevices(
-        withServices: [], // Scan all devices; filter by name
-        scanMode: ScanMode.lowLatency,
-      ).listen((device) {
-        if (device.name == "SHIFT_Vest") {
-          debugPrint("Found SHIFT_Vest: ${device.id}");
-          scanSubscription?.cancel();
-          setState(() => isScanning = false);
-          _connectToDevice(device);
-        }
-      }, onError: (e) {
-        debugPrint("Scan error: $e");
-        if (mounted) setState(() => isScanning = false);
-      });
+      scanSubscription = ble
+          .scanForDevices(
+            withServices: [], // Scan all devices; filter by name
+            scanMode: ScanMode.lowLatency,
+          )
+          .listen(
+            (device) {
+              if (device.name == "SHIFT_Vest") {
+                debugPrint("Found SHIFT_Vest: ${device.id}");
+                scanSubscription?.cancel();
+                setState(() => isScanning = false);
+                _connectToDevice(device);
+              }
+            },
+            onError: (e) {
+              debugPrint("Scan error: $e");
+              if (mounted) setState(() => isScanning = false);
+            },
+          );
 
       // Timeout scan
       await Future.delayed(const Duration(seconds: 15));
@@ -108,26 +116,33 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     try {
       debugPrint("Connecting to ${device.name} (${device.id})...");
 
-      connectionSubscription = ble.connectToDevice(
-        id: device.id,
-        connectionTimeout: const Duration(seconds: 10),
-      ).listen((update) {
-        if (!mounted) return;
+      connectionSubscription = ble
+          .connectToDevice(
+            id: device.id,
+            connectionTimeout: const Duration(seconds: 10),
+          )
+          .listen(
+            (update) {
+              if (!mounted) return;
 
-        debugPrint("Connection state: ${update.connectionState}");
-        setState(() {
-          isConnected = update.connectionState == DeviceConnectionState.connected;
-        });
+              debugPrint("Connection state: ${update.connectionState}");
+              setState(() {
+                isConnected =
+                    update.connectionState == DeviceConnectionState.connected;
+              });
 
-        if (isConnected) {
-          _discoverAndSubscribe(device.id);
-        } else if (update.connectionState == DeviceConnectionState.disconnected) {
-          _cleanupBle();
-        }
-      }, onError: (e) {
-        debugPrint("Connection error: $e");
-        _cleanupBle();
-      });
+              if (isConnected) {
+                _discoverAndSubscribe(device.id);
+              } else if (update.connectionState ==
+                  DeviceConnectionState.disconnected) {
+                _cleanupBle();
+              }
+            },
+            onError: (e) {
+              debugPrint("Connection error: $e");
+              _cleanupBle();
+            },
+          );
     } catch (e) {
       debugPrint("Connect failed: $e");
       _cleanupBle();
@@ -149,7 +164,8 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
       for (var service in services) {
         // service.serviceId is String → .toLowerCase() is valid
-        if (service.serviceId.toString().toLowerCase() == serviceUuidShort.toLowerCase()) {
+        if (service.serviceId.toString().toLowerCase() ==
+            serviceUuidShort.toLowerCase()) {
           debugPrint("Found matching service (short): ${service.serviceId}");
 
           for (var char in service.characteristicIds) {
@@ -158,32 +174,34 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               debugPrint("Found matching characteristic (short): $char");
 
               targetCharacteristic = QualifiedCharacteristic(
-                serviceId: serviceUuidFull,       // Use full Uuid here
-                characteristicId: charUuidFull,   // Use full Uuid here
+                serviceId: serviceUuidFull, // Use full Uuid here
+                characteristicId: charUuidFull, // Use full Uuid here
                 deviceId: deviceId,
               );
 
               // Subscribe and start listening
               notifySubscription?.cancel();
-              notifySubscription = ble.subscribeToCharacteristic(targetCharacteristic!).listen(
-                (value) {
-                  if (value.isNotEmpty && mounted && isConnected) {
-                    setState(() {
-                      batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
-                    });
-                    // try {
-                    //   int firstByte = value[0];
-                    //   debugPrint("  BLE Data: '$firstByte'");
-                    // } catch (_) {
-                    //   debugPrint("  (not valid UTF-8 text)");
-                    // }
-                  }
-                },
-                onError: (e) {
-                  debugPrint("Notification error: $e");
-                  _cleanupBle();
-                },
-              );
+              notifySubscription = ble
+                  .subscribeToCharacteristic(targetCharacteristic!)
+                  .listen(
+                    (value) {
+                      if (value.isNotEmpty && mounted && isConnected) {
+                        setState(() {
+                          batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
+                        });
+                        // try {
+                        //   int firstByte = value[0];
+                        //   debugPrint("  BLE Data: '$firstByte'");
+                        // } catch (_) {
+                        //   debugPrint("  (not valid UTF-8 text)");
+                        // }
+                      }
+                    },
+                    onError: (e) {
+                      debugPrint("Notification error: $e");
+                      _cleanupBle();
+                    },
+                  );
 
               debugPrint("Notifications enabled and listening OK");
               return;
@@ -192,7 +210,9 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
         }
       }
 
-      debugPrint("Target service/characteristic not found (checked short strings)");
+      debugPrint(
+        "Target service/characteristic not found (checked short strings)",
+      );
     } catch (e) {
       debugPrint("Discover/Subscribe error: $e");
       _cleanupBle();
@@ -210,7 +230,9 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     // or used for reconnection logic later.
     // For now, it's mostly a guard / future-proof placeholder
 
-    debugPrint("Listening started for ${targetCharacteristic!.characteristicId}");
+    debugPrint(
+      "Listening started for ${targetCharacteristic!.characteristicId}",
+    );
   }
 
   Future<void> handleDisconnect() async {
@@ -276,18 +298,34 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   Widget _buildDisconnectedUI() {
     return Column(
       children: [
-        const Text("SHIFT", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+        const Text(
+          "SHIFT",
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         const SizedBox(height: 20),
         _cardWrapper(
           child: Column(
             children: [
               ListTile(
                 leading: const CircleAvatar(
-                    backgroundColor: Colors.white10,
-                    child: Icon(Icons.bluetooth, color: Colors.white)
+                  backgroundColor: Colors.white10,
+                  child: Icon(Icons.bluetooth, color: Colors.white),
                 ),
-                title: const Text("SHIFT Vest", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: Text(isScanning ? "Scanning..." : "Not Connected", style: const TextStyle(color: Colors.grey)),
+                title: const Text(
+                  "SHIFT Vest",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Text(
+                  isScanning ? "Scanning..." : "Not Connected",
+                  style: const TextStyle(color: Colors.grey),
+                ),
                 trailing: _statusIndicator(label: "Offline", isOnline: false),
               ),
               const SizedBox(height: 20),
@@ -297,11 +335,23 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                   minimumSize: const Size(double.infinity, 50),
                   backgroundColor: const Color.fromARGB(255, 8, 92, 236),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: isScanning
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text("Connect to Vest", style: TextStyle(fontSize: 16)),
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        "Connect to Vest",
+                        style: TextStyle(fontSize: 16),
+                      ),
               ),
             ],
           ),
@@ -315,8 +365,18 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text("SHIFT Performance", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-          const Text("Monitor your real-time data", style: TextStyle(color: Colors.grey)),
+          const Text(
+            "SHIFT Performance",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const Text(
+            "Monitor your real-time data",
+            style: TextStyle(color: Colors.grey),
+          ),
           const SizedBox(height: 20),
 
           _cardWrapper(
@@ -326,11 +386,17 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
-                      backgroundColor: Colors.white10,
-                      child: Icon(Icons.bluetooth, color: Colors.green)
+                    backgroundColor: Colors.white10,
+                    child: Icon(Icons.bluetooth, color: Colors.green),
                   ),
-                  title: const Text("Vest Status", style: TextStyle(color: Colors.white)),
-                  subtitle: const Text("Connected", style: TextStyle(color: Colors.greenAccent)),
+                  title: const Text(
+                    "Vest Status",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  subtitle: const Text(
+                    "Connected",
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
                   trailing: _statusIndicator(label: "Online", isOnline: true),
                 ),
                 const Divider(color: Colors.white10),
@@ -338,10 +404,17 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Battery Level", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const Text(
+                      "Battery Level",
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
                     Text(
-                        "${(batteryLevel * 100).toInt()}%",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)
+                      "${(batteryLevel * 100).toInt()}%",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -351,7 +424,9 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                   child: LinearProgressIndicator(
                     value: batteryLevel,
                     backgroundColor: Colors.white10,
-                    color: batteryLevel < 0.2 ? Colors.redAccent : Colors.greenAccent,
+                    color: batteryLevel < 0.2
+                        ? Colors.redAccent
+                        : Colors.greenAccent,
                     minHeight: 8,
                   ),
                 ),
@@ -361,10 +436,15 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 45),
                     side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    backgroundColor:Colors.red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    backgroundColor: Colors.red,
                   ),
-                  child: const Text("Disconnect Device", style: TextStyle(color: Colors.white, fontSize: 16)),
+                  child: const Text(
+                    "Disconnect Device",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -375,13 +455,30 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Sensor Status", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Sensor Status",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 16),
-                _sensorContainer(_sensorRow(Icons.favorite, "BPM/Oximeter", isConnected)),
+                _sensorContainer(
+                  _sensorRow(Icons.favorite, "BPM/Oximeter", isConnected),
+                ),
                 const SizedBox(height: 12),
-                _sensorContainer(_sensorRow(Icons.grid_3x3, "3-Axis Accelerometer", isConnected)),
+                _sensorContainer(
+                  _sensorRow(
+                    Icons.grid_3x3,
+                    "3-Axis Accelerometer",
+                    isConnected,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                _sensorContainer(_sensorRow(Icons.thermostat, "Temp/Humidity", isConnected)),
+                _sensorContainer(
+                  _sensorRow(Icons.thermostat, "Temp/Humidity", isConnected),
+                ),
               ],
             ),
           ),
@@ -393,9 +490,14 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               minimumSize: const Size(double.infinity, 54),
               backgroundColor: const Color.fromARGB(255, 8, 92, 236),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            child: const Text("Start New Session", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text(
+              "Start New Session",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -424,12 +526,29 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(
+                name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               Row(
                 children: [
-                  Icon(Icons.check_circle_outline, size: 12, color: isActive ? Colors.greenAccent : Colors.redAccent),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 12,
+                    color: isActive ? Colors.greenAccent : Colors.redAccent,
+                  ),
                   const SizedBox(width: 4),
-                  Text(isActive ? "Active" : "Inactive", style: TextStyle(color: isActive ? Colors.greenAccent : Colors.redAccent, fontSize: 11)),
+                  Text(
+                    isActive ? "Active" : "Inactive",
+                    style: TextStyle(
+                      color: isActive ? Colors.greenAccent : Colors.redAccent,
+                      fontSize: 11,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -446,11 +565,20 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
         color: isOnline ? Colors.green.withOpacity(0.1) : Colors.black26,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isOnline ? Colors.greenAccent.withOpacity(0.5) : Colors.white10,
+          color: isOnline
+              ? Colors.greenAccent.withOpacity(0.5)
+              : Colors.white10,
           width: 1,
         ),
       ),
-      child: Text(label, style: TextStyle(color: isOnline ? Colors.greenAccent : Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isOnline ? Colors.greenAccent : Colors.grey,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
