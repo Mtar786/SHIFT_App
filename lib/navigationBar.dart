@@ -13,26 +13,26 @@ class NavigationWrapper extends StatefulWidget {
 }
 
 class _NavigationWrapperState extends State<NavigationWrapper> {
-    int _currentIndex = 0;
-    
-    List<Widget> get _pages => [
-        // Tab 0: Home/Device Management
-        DevicePage(
-          onStartSession: () {
-            setState(() {
-              _currentIndex = 1; // Switches to the Live Session tab
-            });
-          },
-        ),
+  int _currentIndex = 0;
+  bool _isUnlocked = false;
 
-        // Tab 1: Live Session
-        const LiveSessionScreen(),
+  final GlobalKey<LiveSessionScreenState> _sessionKey = GlobalKey();
 
-        // Tab 2: History (KEY CHANGE HERE: remove 'const' and add 'key')
-        HistoryScreen(key: ValueKey('history_tab_$_currentIndex')),
+  void _unlockAndStart() {
+    setState(() {
+      _isUnlocked = true;
+      _currentIndex = 1; // Auto-navigate to session
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sessionKey.currentState?.startTimer();
+    });
+  }
 
-        // Tab 3: AI Coach
-        const AIChatbot(),
+  List<Widget> get _pages => [
+    DevicePage(onStartSession: _unlockAndStart), // Pass the new function
+    LiveSessionScreen(key: _sessionKey),
+    HistoryScreen(key: ValueKey('history_tab_$_currentIndex')),
+    const AIChatbot(),
   ];
 
   @override
@@ -45,14 +45,29 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index){
+          if (index == 1 && !_isUnlocked) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Connect device and click 'Start Session' first"),
+                duration: Duration(seconds: 2),
+              ),
+            );
+            return;
+          }
+          setState(() => _currentIndex = index);
+        },
         backgroundColor: Colors.black,
         selectedItemColor: Colors.blueAccent,
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
-        items: const [
+        items: [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'Session'),
+          BottomNavigationBarItem(
+            // Change icon based on lock state
+            icon: Icon(_isUnlocked ? Icons.timeline : Icons.lock_outline),
+            label: 'Session',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
           BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Coach'),
         ],

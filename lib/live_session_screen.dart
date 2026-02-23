@@ -8,10 +8,10 @@ class LiveSessionScreen extends StatefulWidget {
   const LiveSessionScreen({super.key});
 
   @override
-  State<LiveSessionScreen> createState() => _LiveSessionScreenState();
+  State<LiveSessionScreen> createState() => LiveSessionScreenState();
 }
 
-class _LiveSessionScreenState extends State<LiveSessionScreen> {
+class LiveSessionScreenState extends State<LiveSessionScreen> {
   // --- SESSION STATE ---
   bool isLiveSession = true;
   Timer? _timer;
@@ -31,13 +31,21 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   @override
   void initState() {
     super.initState();
-    startTimer();
+    // startTimer();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!isLiveSession) {
+      startTimer();
+    }
   }
 
   // --- LOGIC: SIMULATED SENSOR DATA ---

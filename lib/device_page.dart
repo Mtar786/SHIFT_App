@@ -189,12 +189,12 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                         setState(() {
                           batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
                         });
-                        // try {
-                        //   int firstByte = value[0];
-                        //   debugPrint("  BLE Data: '$firstByte'");
-                        // } catch (_) {
-                        //   debugPrint("  (not valid UTF-8 text)");
-                        // }
+                        try {
+                          int firstByte = value[0];
+                          debugPrint("  BLE Data: '$firstByte'");
+                        } catch (_) {
+                          debugPrint("  (not valid UTF-8 text)");
+                        }
                       }
                     },
                     onError: (e) {
@@ -485,7 +485,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: widget.onStartSession,
+            onPressed: isConnected ? widget.onStartSession : null,
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 54),
               backgroundColor: const Color.fromARGB(255, 8, 92, 236),
