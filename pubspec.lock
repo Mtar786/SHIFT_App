@@ -265,12 +265,11 @@ packages:
     source: hosted
     version: "2.1.0"
   reactive_ble_mobile:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: reactive_ble_mobile
-      sha256: "78af92cfb184770a277a8bdaa76b396a28dbada8931f3d8d0ff552414681f5db"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/reactive_ble_mobile"
+      relative: true
+    source: path
     version: "5.4.0"
   reactive_ble_platform_interface:
     dependency: transitive

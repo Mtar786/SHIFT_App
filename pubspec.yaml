@@ -24,10 +24,14 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.8
 
-# 🔥 CRITICAL FIX FOR ANDROID BLE CRASH
-# Prevents protobuf v3 conflict that breaks flutter_reactive_ble
 dependency_overrides:
   protobuf: ^2.1.0
+  # 🔥 PERMANENT FIX FOR ANDROID BLE CRASH
+  # Vendored local copy of reactive_ble_mobile with depth guard patch applied
+  # to ProtobufMessageConverter.kt to prevent infinite recursion on Android GATT
+  # discovery. This means the fix is automatic for everyone who clones the repo.
+  reactive_ble_mobile:
+    path: packages/reactive_ble_mobile
 
 dev_dependencies:
   flutter_test:
