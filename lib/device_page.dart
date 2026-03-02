@@ -23,11 +23,6 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   bool isConnected = false;
   double batteryLevel = 0.0;
 
-  // Short strings for matching discovered UUIDs (case-insensitive, as logged)
-  final String serviceUuidShort = "b001";
-  final String charUuidShort = "c001";
-
-  // Full Uuid objects for QualifiedCharacteristic (required by the library)
   final Uuid serviceUuidFull = Uuid.parse(
     "0000b001-0000-1000-8000-00805f9b34fb",
   );
@@ -36,6 +31,8 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   QualifiedCharacteristic? targetCharacteristic;
 
   bool _isCleaningUp = false;
+  bool _isConnecting = false;
+  bool _didStartConnectFlow = false;
 
   @override
   void initState() {
@@ -52,12 +49,10 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Future<void> _checkPermissions() async {
-    await [
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    final scan = await Permission.bluetoothScan.request();
+    final connect = await Permission.bluetoothConnect.request();
+    final loc = await Permission.locationWhenInUse.request();
+    debugPrint("Perms scan=$scan connect=$connect loc=$loc");
   }
 
   @override
@@ -75,148 +70,150 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Future<void> handleConnect() async {
-    if (isScanning || isConnected) return;
+    if (!mounted) return;
+    if (isScanning || isConnected || _isConnecting) return;
+
+    _isConnecting = true;
+    _didStartConnectFlow = false;
 
     setState(() => isScanning = true);
 
     try {
+      await scanSubscription?.cancel();
+      scanSubscription = null;
+
       scanSubscription = ble
           .scanForDevices(
-            withServices: [], // Scan all devices; filter by name
-            scanMode: ScanMode.lowLatency,
+            withServices: [],
+            scanMode: ScanMode.balanced,
           )
           .listen(
-            (device) {
-              if (device.name == "SHIFT_Vest") {
-                debugPrint("Found SHIFT_Vest: ${device.id}");
-                scanSubscription?.cancel();
-                setState(() => isScanning = false);
-                _connectToDevice(device);
-              }
-            },
-            onError: (e) {
-              debugPrint("Scan error: $e");
-              if (mounted) setState(() => isScanning = false);
-            },
-          );
+        (device) async {
+          if (device.name != "SHIFT_Vest") return;
+          if (_didStartConnectFlow) return;
+          _didStartConnectFlow = true;
 
-      // Timeout scan
+          debugPrint("Found SHIFT_Vest: ${device.id}");
+
+          await scanSubscription?.cancel();
+          scanSubscription = null;
+
+          if (mounted) setState(() => isScanning = false);
+
+          await Future.delayed(const Duration(milliseconds: 1200));
+
+          await _connectToDevice(device);
+        },
+        onError: (e) async {
+          debugPrint("Scan error: $e");
+          await scanSubscription?.cancel();
+          scanSubscription = null;
+          if (mounted) setState(() => isScanning = false);
+        },
+      );
+
       await Future.delayed(const Duration(seconds: 15));
-      if (isScanning && mounted) {
-        scanSubscription?.cancel();
-        setState(() => isScanning = false);
+      if (!mounted) return;
+
+      if (isScanning && !_didStartConnectFlow) {
+        debugPrint("Scan timeout: no device found");
+        await scanSubscription?.cancel();
+        scanSubscription = null;
+        if (mounted) setState(() => isScanning = false);
       }
     } catch (e) {
       debugPrint("Scan setup error: $e");
+      await scanSubscription?.cancel();
+      scanSubscription = null;
       if (mounted) setState(() => isScanning = false);
+    } finally {
+      _isConnecting = false;
     }
   }
 
   Future<void> _connectToDevice(DiscoveredDevice device) async {
-    try {
-      debugPrint("Connecting to ${device.name} (${device.id})...");
+    const maxAttempts = 4;
 
-      connectionSubscription = ble
-          .connectToDevice(
-            id: device.id,
-            connectionTimeout: const Duration(seconds: 10),
-          )
-          .listen(
-            (update) {
-              if (!mounted) return;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        debugPrint("🔌 Connect attempt ${attempt + 1}/$maxAttempts to ${device.id}");
 
-              debugPrint("Connection state: ${update.connectionState}");
-              setState(() {
-                isConnected =
-                    update.connectionState == DeviceConnectionState.connected;
-              });
+        await connectionSubscription?.cancel();
+        connectionSubscription = null;
 
-              if (isConnected) {
-                _discoverAndSubscribe(device.id);
-              } else if (update.connectionState ==
-                  DeviceConnectionState.disconnected) {
-                _cleanupBle();
-              }
-            },
-            onError: (e) {
-              debugPrint("Connection error: $e");
-              _cleanupBle();
-            },
-          );
-    } catch (e) {
-      debugPrint("Connect failed: $e");
-      _cleanupBle();
+        final delayMs = [0, 700, 1500, 2500][attempt];
+        if (delayMs > 0) await Future.delayed(Duration(milliseconds: delayMs));
+
+        final completer = Completer<void>();
+
+        connectionSubscription = ble.connectToDevice(
+          id: device.id,
+          servicesWithCharacteristicsToDiscover: {
+            serviceUuidFull: [charUuidFull],
+          },
+          connectionTimeout: const Duration(seconds: 12),
+        ).listen((update) async {
+          if (!mounted) return;
+
+          debugPrint("Connection state: ${update.connectionState}");
+
+          if (update.connectionState == DeviceConnectionState.connected) {
+            setState(() => isConnected = true);
+
+            await Future.delayed(const Duration(milliseconds: 600));
+            await _subscribeDirect(device.id);
+
+            if (!completer.isCompleted) completer.complete();
+          }
+
+          if (update.connectionState == DeviceConnectionState.disconnected) {
+            if (!completer.isCompleted) completer.completeError("disconnected");
+          }
+        }, onError: (e) {
+          if (!completer.isCompleted) completer.completeError(e);
+        });
+
+        await completer.future;
+        debugPrint("✅ Connected + subscribed");
+        return;
+      } catch (e) {
+        debugPrint("❌ Attempt ${attempt + 1} failed: $e");
+        await _cleanupBle();
+
+        if (attempt == maxAttempts - 1) {
+          debugPrint("🚨 All connect attempts failed");
+          return;
+        }
+      }
     }
   }
 
-  Future<void> _discoverAndSubscribe(String deviceId) async {
-    try {
-      debugPrint("Discovering services for $deviceId...");
-      final services = await ble.discoverServices(deviceId);
+  Future<void> _subscribeDirect(String deviceId) async {
+    if (targetCharacteristic != null) return;
 
-      debugPrint("Discovered ${services.length} services:");
-      for (var service in services) {
-        debugPrint(" - Service: ${service.serviceId}");
-        for (var char in service.characteristicIds) {
-          debugPrint("   - Char: $char");
+    targetCharacteristic = QualifiedCharacteristic(
+      serviceId: serviceUuidFull,
+      characteristicId: charUuidFull,
+      deviceId: deviceId,
+    );
+
+    notifySubscription?.cancel();
+    notifySubscription = ble.subscribeToCharacteristic(targetCharacteristic!).listen(
+      (value) {
+        if (!mounted) return;
+        if (value.isNotEmpty) {
+          setState(() {
+            batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
+          });
         }
-      }
+      },
+      onError: (e) async {
+        debugPrint("Notification error: $e");
+        await _cleanupBle();
+      },
+    );
 
-      for (var service in services) {
-        // service.serviceId is String → .toLowerCase() is valid
-        if (service.serviceId.toString().toLowerCase() ==
-            serviceUuidShort.toLowerCase()) {
-          debugPrint("Found matching service (short): ${service.serviceId}");
-
-          for (var char in service.characteristicIds) {
-            // char is also String → .toLowerCase() works
-            if (char.toString().toLowerCase() == charUuidShort.toLowerCase()) {
-              debugPrint("Found matching characteristic (short): $char");
-
-              targetCharacteristic = QualifiedCharacteristic(
-                serviceId: serviceUuidFull, // Use full Uuid here
-                characteristicId: charUuidFull, // Use full Uuid here
-                deviceId: deviceId,
-              );
-
-              // Subscribe and start listening
-              notifySubscription?.cancel();
-              notifySubscription = ble
-                  .subscribeToCharacteristic(targetCharacteristic!)
-                  .listen(
-                    (value) {
-                      if (value.isNotEmpty && mounted && isConnected) {
-                        setState(() {
-                          batteryLevel = (value[0] / 100.0).clamp(0.0, 1.0);
-                        });
-                        try {
-                          int firstByte = value[0];
-                          debugPrint("  BLE Data: '$firstByte'");
-                        } catch (_) {
-                          debugPrint("  (not valid UTF-8 text)");
-                        }
-                      }
-                    },
-                    onError: (e) {
-                      debugPrint("Notification error: $e");
-                      _cleanupBle();
-                    },
-                  );
-
-              debugPrint("Notifications enabled and listening OK");
-              return;
-            }
-          }
-        }
-      }
-
-      debugPrint(
-        "Target service/characteristic not found (checked short strings)",
-      );
-    } catch (e) {
-      debugPrint("Discover/Subscribe error: $e");
-      _cleanupBle();
-    }
+    debugPrint("📡 Subscribed to characteristic");
   }
 
   void _startListening() {
@@ -224,12 +221,6 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
       debugPrint("Cannot start listening: no target characteristic");
       return;
     }
-
-    // In this library, subscribeToCharacteristic() already gives us the stream
-    // We already set notifySubscription above — so this method can be minimal
-    // or used for reconnection logic later.
-    // For now, it's mostly a guard / future-proof placeholder
-
     debugPrint(
       "Listening started for ${targetCharacteristic!.characteristicId}",
     );
@@ -246,12 +237,8 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
     debugPrint("🔥 BLE cleanup started");
 
-    // Best-effort unsubscribe — ignore if already off or char invalid
     if (targetCharacteristic != null) {
       try {
-        // flutter_reactive_ble doesn't have explicit unsubscribe; cancel the stream
-        // But to be explicit, we can call setNotifyValue(false) via write if needed
-        // For now, just cancel the subscription stream
         notifySubscription?.cancel();
         notifySubscription = null;
         debugPrint("Subscription stream cancelled");
@@ -280,7 +267,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     _isCleaningUp = false;
   }
 
-  // --- UI Methods (Original Design) ---
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
