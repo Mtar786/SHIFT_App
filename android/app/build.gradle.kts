@@ -15,7 +15,7 @@ android {
         applicationId = "com.example.shift_app"
 
         // ✅ Minimum required for BLE support (21 = Android 5.0, required for BLE)
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
 
         // ✅ Required for Android 12+ BLE permissions to work properly
         targetSdk = 34

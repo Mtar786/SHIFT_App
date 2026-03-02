@@ -456,11 +456,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 12),
                 _sensorContainer(
-                  _sensorRow(
-                    Icons.grid_3x3,
-                    "3-Axis Accelerometer",
-                    isConnected,
-                  ),
+                  _sensorRow(Icons.grid_3x3, "3-Axis Accelerometer", isConnected),
                 ),
                 const SizedBox(height: 12),
                 _sensorContainer(
@@ -547,7 +543,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
   Widget _statusIndicator({required String label, required bool isOnline}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isOnline ? Colors.green.withOpacity(0.1) : Colors.black26,
         borderRadius: BorderRadius.circular(20),
