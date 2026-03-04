@@ -1,38 +1,36 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'session_manager.dart';
 
 class LiveSessionScreen extends StatefulWidget {
-  const LiveSessionScreen({super.key});
+  final double bpm;
+  final double oxygen;
+  final double temperature;
+  final int quality;
+  final String alarms;
+
+  const LiveSessionScreen({
+    super.key,
+    required this.bpm,
+    required this.oxygen,
+    required this.temperature,
+    required this.quality,
+    required this.alarms,
+  });
 
   @override
   State<LiveSessionScreen> createState() => LiveSessionScreenState();
 }
 
 class LiveSessionScreenState extends State<LiveSessionScreen> {
-  // --- SESSION STATE ---
   bool isLiveSession = true;
   Timer? _timer;
-  final Random _random = Random();
   int _sessionSeconds = 0;
-  bool showWarning = false;
 
-  // --- DYNAMIC DATA ---
-  int _currentHeartRate = 75;
-  int _currentSpO2 = 98;
-  int _currentHeatStress = 32;
-  int _currentBreathing = 16;
-
-  // Track HR to calculate a real average at the end
-  final List<int> _hrHistory = [];
-
-  @override
-  void initState() {
-    super.initState();
-    // startTimer();
-  }
+  final List<double> _bpmHistory = [];
+  final List<double> _oxygenHistory = [];
+  final List<double> _tempHistory = [];
 
   @override
   void dispose() {
@@ -40,61 +38,54 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
     super.dispose();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!isLiveSession) {
-      startTimer();
-    }
-  }
-
-  // --- LOGIC: SIMULATED SENSOR DATA ---
   void startTimer() {
     _timer?.cancel();
     setState(() {
       _sessionSeconds = 0;
       isLiveSession = true;
-      _hrHistory.clear();
-      _hrHistory.add(_currentHeartRate);
+      _bpmHistory.clear();
+      _oxygenHistory.clear();
+      _tempHistory.clear();
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           _sessionSeconds++;
-
-          // Simulate realistic sensor drift
-          _currentHeartRate = _simulateSensor(_currentHeartRate, 60, 185, 3);
-          _currentSpO2 = _simulateSensor(_currentSpO2, 94, 100, 1);
-          _currentHeatStress = _simulateSensor(_currentHeatStress, 25, 95, 2);
-          _currentBreathing = _simulateSensor(_currentBreathing, 12, 30, 1);
-
-          _hrHistory.add(_currentHeartRate);
-
-          // Logic: Show Warning if metrics are in danger zones
-          showWarning = (_currentHeatStress > 80 || _currentHeartRate > 160);
+          if (widget.bpm > 0) _bpmHistory.add(widget.bpm);
+          if (widget.oxygen > 0) _oxygenHistory.add(widget.oxygen);
+          if (widget.temperature > 0) _tempHistory.add(widget.temperature);
         });
       }
     });
   }
 
-  int _simulateSensor(int current, int min, int max, int step) {
-    int drift = _random.nextInt(step * 2 + 1) - step;
-    return (current + drift).clamp(min, max);
-  }
-
   void endSession() {
     _timer?.cancel();
 
-    // Calculate actual Average HR from the session
-    int avgHr = _hrHistory.isEmpty ? 0 : (_hrHistory.reduce((a, b) => a + b) ~/ _hrHistory.length);
+    // Calculate Heart Rate Average
+    double avgBpm = _bpmHistory.isEmpty
+        ? 0
+        : (_bpmHistory.reduce((a, b) => a + b) / _bpmHistory.length);
+
+    // Calculate Oxygen Average
+    double avgOxy = _oxygenHistory.isEmpty
+        ? 0
+        : (_oxygenHistory.reduce((a, b) => a + b) / _oxygenHistory.length);
+
+    // Calculate Temp Average
+    double avgTemp = _tempHistory.isEmpty
+        ? 0
+        : (_tempHistory.reduce((a, b) => a + b) / _tempHistory.length);
 
     final newSession = SessionItemData(
       title: DateFormat('MMM d, h:mm a').format(DateTime.now()),
       duration: _getFormattedTime(_sessionSeconds),
-      avgHrBpm: avgHr,
-      peakHeatPercent: _currentHeatStress, // Using last recorded heat stress
-      alerts: showWarning ? 1 : 0,
+      avgHrBpm: avgBpm,
+      avgOxygen: avgOxy,            // Passing new data
+      avgTemperature: avgTemp,      // Passing new data
+      peakHeatPercent: widget.quality,
+      alerts: (widget.alarms != "OK" && widget.alarms.isNotEmpty) ? 1 : 0,
     );
 
     SessionManager().addSession(newSession);
@@ -107,7 +98,6 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  // --- UI: BUILD METHODS ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,6 +112,21 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   Widget _buildLiveView() {
+    bool hasAlarm = widget.alarms != "OK" && widget.alarms.isNotEmpty;
+
+    // --- DYNAMIC THRESHOLD LOGIC ---
+    Color bpmColor = Colors.greenAccent;
+    if (widget.bpm > 160) bpmColor = Colors.red;
+    else if (widget.bpm > 120) bpmColor = Colors.orange;
+
+    Color oxyColor = Colors.blueAccent;
+    if (widget.oxygen > 0 && widget.oxygen < 92) oxyColor = Colors.red;
+    else if (widget.oxygen > 0 && widget.oxygen < 95) oxyColor = Colors.orange;
+
+    Color tempColor = Colors.green;
+    if (widget.temperature > 38.5) tempColor = Colors.red;
+    else if (widget.temperature > 37.5) tempColor = Colors.orange;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -148,54 +153,54 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
         ),
         const SizedBox(height: 20),
 
-        // Warning Banner
-        if (showWarning) _buildWarningBanner(),
+        if (hasAlarm) _buildWarningBanner(widget.alarms),
 
-        // Metric Grid
+        // Row 1: Heart Rate & Blood Oxygen
         Row(
           children: [
             Expanded(
               child: _LiveMetricCard(
                 title: 'Heart Rate',
-                value: '$_currentHeartRate',
+                value: widget.bpm > 0 ? '${widget.bpm}' : '--',
                 unit: 'BPM',
                 icon: Icons.favorite,
-                // Logic: Red if > 150, Orange if > 120, else Green
-                color: _currentHeartRate > 150 ? Colors.red : (_currentHeartRate > 120 ? Colors.orange : Colors.green),
+                color: bpmColor,
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: _LiveMetricCard(
-                title: 'Blood O₂',
-                value: '$_currentSpO2',
+                title: 'Blood Oxygen',
+                value: widget.oxygen > 0 ? '${widget.oxygen}' : '--',
                 unit: '%',
                 icon: Icons.water_drop,
-                color: _currentSpO2 < 95 ? Colors.orange : Colors.green,
+                color: oxyColor,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
+
+        // Row 2: Body Temp & Vest Status
         Row(
           children: [
             Expanded(
               child: _LiveMetricCard(
-                title: 'Heat Stress',
-                value: '$_currentHeatStress',
-                unit: '%',
+                title: 'Body Temp',
+                value: widget.temperature > 0 ? widget.temperature.toStringAsFixed(1) : '--',
+                unit: '°C',
                 icon: Icons.thermostat,
-                color: _currentHeatStress > 75 ? Colors.red : (_currentHeatStress > 50 ? Colors.orange : Colors.green),
+                color: tempColor,
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: _LiveMetricCard(
-                title: 'Breathing',
-                value: '$_currentBreathing',
-                unit: 'BrPM',
-                icon: Icons.air,
-                color: Colors.green,
+                title: 'Signal Quality',
+                value: widget.quality > 0 ? '${widget.quality}' : '--',
+                unit: 'system',
+                icon: Icons.shield,
+                color: widget.alarms == "OK" ? Colors.green : Colors.red,
               ),
             ),
           ],
@@ -219,7 +224,9 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   Widget _buildSummaryView() {
-    int avgHr = _hrHistory.isEmpty ? 0 : (_hrHistory.reduce((a, b) => a + b) ~/ _hrHistory.length);
+    double avgBpm = _bpmHistory.isEmpty ? 0 : (_bpmHistory.reduce((a, b) => a + b) / _bpmHistory.length);
+    double avgOxy = _oxygenHistory.isEmpty ? 0 : (_oxygenHistory.reduce((a, b) => a + b) / _oxygenHistory.length);
+    double avgTemp = _tempHistory.isEmpty ? 0 : (_tempHistory.reduce((a, b) => a + b) / _tempHistory.length);
 
     return Column(
       children: [
@@ -227,9 +234,11 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
         const SizedBox(height: 24),
         _SummaryMetricCard(title: "Duration", value: _getFormattedTime(_sessionSeconds)),
         const SizedBox(height: 12),
-        _SummaryMetricCard(title: "Average Heart Rate", value: "$avgHr BPM"),
+        _SummaryMetricCard(title: "Average Heart Rate", value: "${avgBpm.toStringAsFixed(1)} BPM"),
         const SizedBox(height: 12),
-        _SummaryMetricCard(title: "Peak Heat Stress", value: "$_currentHeatStress%"),
+        _SummaryMetricCard(title: "Average Blood Oxygen", value: "${avgOxy.toStringAsFixed(1)}%"),
+        const SizedBox(height: 12),
+        _SummaryMetricCard(title: "Average Body Temp", value: "${avgTemp.toStringAsFixed(1)}°C"),
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
@@ -244,7 +253,7 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
-  Widget _buildWarningBanner() {
+  Widget _buildWarningBanner(String message) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
@@ -254,18 +263,16 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.red),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.warning, color: Colors.red),
-          SizedBox(width: 12),
-          Text("HIGH STRESS DETECTED", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          const Icon(Icons.warning, color: Colors.red),
+          const SizedBox(width: 12),
+          Text(message.toUpperCase(), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 }
-
-// --- HELPER COMPONENTS ---
 
 class _LiveMetricCard extends StatelessWidget {
   final String title;
@@ -308,9 +315,7 @@ class _LiveMetricCard extends StatelessWidget {
 class _SummaryMetricCard extends StatelessWidget {
   final String title;
   final String value;
-
   const _SummaryMetricCard({required this.title, required this.value});
-
   @override
   Widget build(BuildContext context) {
     return Container(

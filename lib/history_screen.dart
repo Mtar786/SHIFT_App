@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'session_manager.dart';
 
 class HistoryScreen extends StatefulWidget {
-  // The 'super.key' allows the ValueKey from the Navigator to work
   const HistoryScreen({super.key});
 
   @override
@@ -71,19 +70,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top Row: Date and Duration
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(data.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              Text(data.duration, style: const TextStyle(color: Colors.blueAccent)),
+              Text(data.duration, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w600)),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          // Single Row for all critical metrics
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _miniMetric("Avg HR", "${data.avgHrBpm}"),
-              _miniMetric("Heat", "${data.peakHeatPercent}%"),
+              _miniMetric("Avg HR", "${data.avgHrBpm.toStringAsFixed(1)}"),
+              _miniMetric("O2", "${data.avgOxygen.toStringAsFixed(1)}%"),
+              _miniMetric("Temp", "${data.avgTemperature.toStringAsFixed(1)}°"),
               _miniMetric("Alerts", "${data.alerts}", isRed: data.alerts > 0),
             ],
           ),
@@ -96,8 +98,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-        Text(value, style: TextStyle(color: isRed ? Colors.red : Colors.white, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.5)),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: isRed ? Colors.redAccent : Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          )
+        ),
       ],
     );
   }

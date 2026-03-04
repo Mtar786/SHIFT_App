@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 class SessionItemData {
   final String title;
   final String duration;
-  final int avgHrBpm;
+  final double avgHrBpm;
+  final double avgOxygen;      // New field
+  final double avgTemperature; // New field
   final int peakHeatPercent;
   final int alerts;
 
@@ -11,6 +13,8 @@ class SessionItemData {
     required this.title,
     required this.duration,
     required this.avgHrBpm,
+    required this.avgOxygen,
+    required this.avgTemperature,
     required this.peakHeatPercent,
     required this.alerts,
   });

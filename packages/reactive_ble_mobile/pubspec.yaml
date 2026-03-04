@@ -35,4 +35,4 @@ flutter:
         sharedDarwinSource: true
       macos:
         pluginClass: ReactiveBlePlugin
-        sharedDarwinSource: true  
+        sharedDarwinSource: true

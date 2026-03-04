@@ -15,21 +15,19 @@ class _AIChatbotState extends State<AIChatbot> {
   final ScrollController _scrollController = ScrollController();
 
   static const String _apiKey = "AIzaSyC3nLmkC6-IIn_7MynItVbYpNAI1lrucXU";
-
   late final GenerativeModel _model;
 
   final List<Map<String, String>> _messages = [
     {
       "role": "bot",
-      "text":
-          "Hi — I’m your SHIFT AI Coach.\n\nTap Analyze Latest to review your most recent session, or ask a question below."
+      "text": "Hi — I’m your SHIFT AI Coach.\n\nTap Analyze Latest to review your metrics from your last session."
     }
   ];
 
   Map<String, dynamic>? _latestAnalysis;
   bool _isAnalyzing = false;
 
-  // Always pull fresh data from SessionManager
+  // GRAB ONLY THE LATEST: Returns just the first item in history
   SessionItemData? get _latestSession {
     final history = SessionManager().history;
     return history.isNotEmpty ? history.first : null;
@@ -43,7 +41,8 @@ class _AIChatbotState extends State<AIChatbot> {
 Date: ${s.title}
 Duration: ${s.duration}
 Average HR: ${s.avgHrBpm} BPM
-Peak Heat Stress: ${s.peakHeatPercent}%
+Average Oxygen: ${s.avgOxygen.toStringAsFixed(1)}%
+Average Temp: ${s.avgTemperature.toStringAsFixed(1)}°C
 Alerts: ${s.alerts}
 """;
   }
@@ -51,29 +50,22 @@ Alerts: ${s.alerts}
   @override
   void initState() {
     super.initState();
-
     _model = GenerativeModel(
       model: 'gemini-3-flash-preview',
       apiKey: _apiKey,
       systemInstruction: Content.system(
-        "You are the SHIFT AI Performance Coach. "
-        "You analyze BPM (Heart Rate) and Heat Stress. "
-        "Be technical, clear, and concise.",
+        "You are the SHIFT AI Performance Coach. You analyze the user's latest recorded session. "
+        "Provide technical physiological feedback on HR, Oxygen, and Temperature. "
+        "Prioritize safety and be concise.",
       ),
     );
   }
 
   Future<void> _analyzeLatestSession() async {
     final s = _latestSession;
-
     if (s == null) {
       setState(() {
-        _latestAnalysis = null;
-        _messages.add({
-          "role": "bot",
-          "text":
-              "No sessions recorded yet. Complete a session first."
-        });
+        _messages.add({"role": "bot", "text": "No session found to analyze."});
       });
       return;
     }
@@ -85,24 +77,20 @@ Alerts: ${s.alerts}
 
     try {
       final prompt = """
-You are a performance analytics engine.
+Analyze the LATEST session provided below. Return ONLY valid JSON.
 
-Analyze this session and return ONLY valid JSON.
-Do not include markdown.
-Do not include text outside JSON.
-
-Session Data:
+SESSION DATA:
 ${_latestSessionAsText()}
 
-Return this exact JSON structure:
-
+JSON structure:
 {
   "snapshot": {
-    "date": "",
-    "duration": "",
-    "avg_hr": "",
-    "peak_heat": "",
-    "alerts": ""
+    "date": "${s.title}",
+    "duration": "${s.duration}",
+    "avg_hr": "${s.avgHrBpm} BPM",
+    "avg_oxygen": "${s.avgOxygen.toStringAsFixed(1)}%",
+    "avg_temp": "${s.avgTemperature.toStringAsFixed(1)}°C",
+    "alerts": "${s.alerts}"
   },
   "observations": [],
   "safety": [],
@@ -111,20 +99,14 @@ Return this exact JSON structure:
 """;
 
       final response = await _model.generateContent([Content.text(prompt)]);
-      final raw = response.text ?? "{}";
-
-      final parsed = jsonDecode(raw);
+      final parsed = jsonDecode(response.text ?? "{}");
 
       setState(() {
         _latestAnalysis = parsed;
       });
-
     } catch (e) {
       setState(() {
-        _messages.add({
-          "role": "bot",
-          "text": "Error generating analysis. Check API quota."
-        });
+        _messages.add({"role": "bot", "text": "Error analyzing session."});
       });
     } finally {
       setState(() => _isAnalyzing = false);
@@ -134,66 +116,39 @@ Return this exact JSON structure:
   Future<void> _sendChatMessage() async {
     final userText = _controller.text.trim();
     if (userText.isEmpty) return;
-
     _controller.clear();
 
-    setState(() {
-      _messages.add({"role": "user", "text": userText});
-    });
+    setState(() => _messages.add({"role": "user", "text": userText}));
 
     try {
-      final prompt = """
-You are the SHIFT AI Coach.
-
-User question:
-$userText
-
-Latest session data:
-${_latestSessionAsText()}
-
-Respond in plain text.
-Be concise.
-""";
-
+      final prompt = "User Question: $userText\n\nLatest Session Data:\n${_latestSessionAsText()}\n\nRespond concisely in plain text.";
       final response = await _model.generateContent([Content.text(prompt)]);
-      final text = response.text ?? "I couldn't respond.";
 
       setState(() {
-        _messages.add({"role": "bot", "text": text});
+        _messages.add({"role": "bot", "text": response.text ?? "No response."});
       });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent + 200,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-
+      _scrollToBottom();
     } catch (e) {
-      setState(() {
-        _messages.add({
-          "role": "bot",
-          "text": "Error: API quota exceeded or invalid key."
-        });
-      });
+      setState(() => _messages.add({"role": "bot", "text": "Error connecting to AI."}));
     }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 200,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final s = _latestSession;
-
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text("AI Performance Coach",
-            style: TextStyle(color: Colors.white)),
-        elevation: 0,
-      ),
+      appBar: AppBar(backgroundColor: Colors.black, title: const Text("AI Coach")),
       body: Column(
         children: [
           Expanded(
@@ -201,7 +156,7 @@ Be concise.
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _buildLatestSessionCard(s),
+                  _buildStatusCard(),
                   const SizedBox(height: 12),
                   _buildAnalyzeButton(),
                   if (_latestAnalysis != null) ...[
@@ -220,67 +175,42 @@ Be concise.
     );
   }
 
-  Widget _buildLatestSessionCard(SessionItemData? s) {
+  Widget _buildStatusCard() {
+    final s = _latestSession;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16)),
       child: Text(
-        s == null
-            ? "No sessions recorded yet."
-            : "Latest: ${s.title}\nDuration: ${s.duration} | Avg HR: ${s.avgHrBpm} BPM | Heat: ${s.peakHeatPercent}% | Alerts: ${s.alerts}",
-        style: const TextStyle(color: Colors.white),
+        s == null ? "No sessions recorded." : "Ready to analyze session: ${s.title}",
+        style: const TextStyle(color: Colors.white, fontSize: 13),
       ),
     );
   }
 
   Widget _buildAnalyzeButton() {
     return SizedBox(
-      width: double.infinity,
-      height: 48,
+      width: double.infinity, height: 48,
       child: ElevatedButton(
         onPressed: _isAnalyzing ? null : _analyzeLatestSession,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF085CEC),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14)),
-        ),
-        child: _isAnalyzing
-            ? const SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              )
-            : const Text("Analyze Latest Session"),
+        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF085CEC), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        child: _isAnalyzing ? const CircularProgressIndicator(color: Colors.white) : const Text("Analyze Latest Session"),
       ),
     );
   }
 
   Widget _buildAnalysisCard(Map<String, dynamic> data) {
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1120),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFF0B1120), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E293B))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Latest Session Analysis",
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
+          const Text("Session Insights", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-
-          _buildSection("Session Snapshot", data["snapshot"]),
-          _buildListSection("Key Observations", data["observations"]),
-          _buildListSection("Safety Review", data["safety"]),
-          _buildListSection("Training Recommendations", data["recommendations"]),
+          _buildSection("Metrics Snapshot", data["snapshot"]),
+          _buildListSection("Observations", data["observations"]),
+          _buildListSection("Safety & Tips", data["safety"]),
         ],
       ),
     );
@@ -290,112 +220,74 @@ Be concise.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 12),
-        Text(title,
-            style: const TextStyle(
-                color: Colors.white70, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 6),
-        Text("Date: ${snapshot["date"]}",
-            style: const TextStyle(color: Colors.white70)),
-        Text("Duration: ${snapshot["duration"]}",
-            style: const TextStyle(color: Colors.white70)),
-        Text("Avg HR: ${snapshot["avg_hr"]}",
-            style: const TextStyle(color: Colors.white70)),
-        Text("Peak Heat: ${snapshot["peak_heat"]}",
-            style: const TextStyle(color: Colors.white70)),
-        Text("Alerts: ${snapshot["alerts"]}",
-            style: const TextStyle(color: Colors.white70)),
+        Text(title, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+        const SizedBox(height: 8),
+        ...snapshot.entries.map((e) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(e.key.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(color: Colors.white60, fontSize: 10)),
+              Text(e.value.toString(), style: const TextStyle(color: Colors.white, fontSize: 11)),
+            ],
+          ),
+        )).toList(),
       ],
     );
   }
 
   Widget _buildListSection(String title, List list) {
+    if (list.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 12),
-        Text(title,
-            style: const TextStyle(
-                color: Colors.white70, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 6),
-        ...list.map<Widget>((item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text("• $item",
-                  style: const TextStyle(color: Colors.white70)),
-            ))
+        const SizedBox(height: 16),
+        Text(title, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+        ...list.map((item) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text("• $item", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        )),
       ],
     );
   }
 
   Widget _buildChatList() {
     return ListView.builder(
-      controller: _scrollController,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final isUser = _messages[index]["role"] == "user";
-        return _buildChatBubble(isUser, _messages[index]["text"] ?? "");
+        return Align(
+          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: isUser ? const Color(0xFF085CEC) : const Color(0xFF1A1C2E), borderRadius: BorderRadius.circular(12)),
+            child: Text(_messages[index]["text"]!, style: const TextStyle(color: Colors.white, fontSize: 13)),
+          ),
+        );
       },
-    );
-  }
-
-  Widget _buildChatBubble(bool isUser, String text) {
-    return Align(
-      alignment:
-          isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(12),
-        constraints: BoxConstraints(
-            maxWidth:
-                MediaQuery.of(context).size.width * 0.78),
-        decoration: BoxDecoration(
-          color:
-              isUser ? const Color(0xFF085CEC) : const Color(0xFF1A1C2E),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(text,
-            style: const TextStyle(color: Colors.white)),
-      ),
     );
   }
 
   Widget _buildInputArea() {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             Expanded(
               child: TextField(
-                controller: _controller,
-                style:
-                    const TextStyle(color: Colors.white),
-                onSubmitted: (_) => _sendChatMessage(),
-                decoration: const InputDecoration(
-                  hintText:
-                      "Ask about your performance...",
-                  hintStyle:
-                      TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: Color(0xFF1A1C2E),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.all(Radius.circular(30)),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                controller: _controller, style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: "Ask about this session...",
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true, fillColor: const Color(0xFF1A1C2E),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            IconButton(
-              icon: const Icon(Icons.send,
-                  color: Color(0xFF085CEC)),
-              onPressed: _sendChatMessage,
-            ),
+            IconButton(icon: const Icon(Icons.send, color: Color(0xFF085CEC)), onPressed: _sendChatMessage),
           ],
         ),
       ),

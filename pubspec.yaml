@@ -30,13 +30,14 @@ dependency_overrides:
   # Vendored local copy of reactive_ble_mobile with depth guard patch applied
   # to ProtobufMessageConverter.kt to prevent infinite recursion on Android GATT
   # discovery. This means the fix is automatic for everyone who clones the repo.
-  reactive_ble_mobile:
-    path: packages/reactive_ble_mobile
+  reactive_ble_platform_interface: ^5.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
 
 flutter:
   uses-material-design: true
