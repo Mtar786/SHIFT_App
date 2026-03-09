@@ -14,100 +14,108 @@ class _AIChatbotState extends State<AIChatbot> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  static const String _apiKey = "AIzaSyC3nLmkC6-IIn_7MynItVbYpNAI1lrucXU";
-  late final GenerativeModel _model;
+  static const String _apiKey = "AIzaSyASJISScaVs5l6uG6jMLBGpkG2XstzEc_4";
+
+  // Gemeni API Models 
+  final List<String> _modelList = [
+    'gemini-3.1-flash-lite-preview', // Best "Workhorse" for physiological stats
+    'gemini-3.1-pro-preview',       // Advanced reasoning (Migrated from 3.0 Pro)
+    'gemini-1.5-flash',            // Reliable legacy fallback
+  ];
+
+  late GenerativeModel _model;
+  int _currentModelIndex = 0;
 
   final List<Map<String, String>> _messages = [
     {
       "role": "bot",
-      "text": "Hi — I’m your SHIFT AI Coach.\n\nTap Analyze Latest to review your metrics from your last session."
+      "text": "Hi — I’m your SHIFT AI Coach.\n\nTap Analyze Latest to review your performance metrics."
     }
   ];
 
   Map<String, dynamic>? _latestAnalysis;
   bool _isAnalyzing = false;
 
-  // GRAB ONLY THE LATEST: Returns just the first item in history
   SessionItemData? get _latestSession {
     final history = SessionManager().history;
     return history.isNotEmpty ? history.first : null;
   }
 
-  String _latestSessionAsText() {
-    final s = _latestSession;
-    if (s == null) return "No sessions recorded.";
-
-    return """
-Date: ${s.title}
-Duration: ${s.duration}
-Average HR: ${s.avgHrBpm} BPM
-Average Oxygen: ${s.avgOxygen.toStringAsFixed(1)}%
-Average Temp: ${s.avgTemperature.toStringAsFixed(1)}°C
-Alerts: ${s.alerts}
-""";
-  }
-
   @override
   void initState() {
     super.initState();
+    _initModel();
+  }
+
+  void _initModel() {
     _model = GenerativeModel(
-      model: 'gemini-3-flash-preview',
+      model: _modelList[_currentModelIndex],
       apiKey: _apiKey,
       systemInstruction: Content.system(
-        "You are the SHIFT AI Performance Coach. You analyze the user's latest recorded session. "
-        "Provide technical physiological feedback on HR, Oxygen, and Temperature. "
-        "Prioritize safety and be concise.",
+        "You are the SHIFT AI Performance Coach. Analyze HR, Oxygen, and Temp. "
+        "Prioritize safety and technical accuracy. Be concise.",
       ),
     );
   }
 
-  Future<void> _analyzeLatestSession() async {
-    final s = _latestSession;
-    if (s == null) {
+  void _switchToFallbackModel() {
+    if (_currentModelIndex < _modelList.length - 1) {
       setState(() {
-        _messages.add({"role": "bot", "text": "No session found to analyze."});
+        _currentModelIndex++;
+        _initModel();
       });
-      return;
+      debugPrint("🔄 Migrating to model: ${_modelList[_currentModelIndex]}");
+    }
+  }
+
+  String _latestSessionAsText() {
+    final s = _latestSession;
+    if (s == null) return "No sessions recorded.";
+    return "Date: ${s.title}, HR: ${s.avgHrBpm} BPM, O2: ${s.avgOxygen}%, Temp: ${s.avgTemperature}°C, Alerts: ${s.alerts}";
+  }
+
+  // --- CORE LOGIC ---
+
+  Future<void> _analyzeLatestSession() async {
+    // Check if there is actually data to analyze
+    if (_latestSession == null) {
+      setState(() {
+        _messages.add({
+          "role": "bot",
+          "text": "I don't see any recorded sessions yet. Please record a session before asking for an analysis!"
+        });
+      });
+      _scrollToBottom();
+      return; 
     }
 
-    setState(() {
-      _isAnalyzing = true;
-      _latestAnalysis = null;
-    });
+    setState(() { _isAnalyzing = true; _latestAnalysis = null; });
 
     try {
       final prompt = """
-Analyze the LATEST session provided below. Return ONLY valid JSON.
-
-SESSION DATA:
-${_latestSessionAsText()}
-
-JSON structure:
-{
-  "snapshot": {
-    "date": "${s.title}",
-    "duration": "${s.duration}",
-    "avg_hr": "${s.avgHrBpm} BPM",
-    "avg_oxygen": "${s.avgOxygen.toStringAsFixed(1)}%",
-    "avg_temp": "${s.avgTemperature.toStringAsFixed(1)}°C",
-    "alerts": "${s.alerts}"
-  },
-  "observations": [],
-  "safety": [],
-  "recommendations": []
-}
-""";
+      Analyze the LATEST session below. Return ONLY valid JSON.
+      DATA: ${_latestSessionAsText()}
+      JSON structure:
+      {
+        "status": "Green/Yellow/Red",
+        "observations": ["point 1", "point 2"],
+        "safety": ["tip 1"]
+      }
+      """;
 
       final response = await _model.generateContent([Content.text(prompt)]);
-      final parsed = jsonDecode(response.text ?? "{}");
-
-      setState(() {
-        _latestAnalysis = parsed;
-      });
+      
+      if (response.text != null) {
+        setState(() {
+          // Clean the response text to ensure it is valid JSON
+          String cleanJson = response.text!.replaceAll('```json', '').replaceAll('```', '').trim();
+          _latestAnalysis = jsonDecode(cleanJson);
+        });
+        debugPrint(" Analysis Success: ${_modelList[_currentModelIndex]}");
+      }
     } catch (e) {
-      setState(() {
-        _messages.add({"role": "bot", "text": "Error analyzing session."});
-      });
+      debugPrint(" Analysis Error: $e");
+      _switchToFallbackModel();
     } finally {
       setState(() => _isAnalyzing = false);
     }
@@ -121,52 +129,64 @@ JSON structure:
     setState(() => _messages.add({"role": "user", "text": userText}));
 
     try {
-      final prompt = "User Question: $userText\n\nLatest Session Data:\n${_latestSessionAsText()}\n\nRespond concisely in plain text.";
+      final prompt = "User Question: $userText\n\nLatest Data: ${_latestSessionAsText()}";
       final response = await _model.generateContent([Content.text(prompt)]);
 
       setState(() {
-        _messages.add({"role": "bot", "text": response.text ?? "No response."});
+        _messages.add({"role": "bot", "text": response.text ?? "I'm having trouble processing that."});
       });
       _scrollToBottom();
     } catch (e) {
-      setState(() => _messages.add({"role": "bot", "text": "Error connecting to AI."}));
+      debugPrint(" Chat Error: $e");
+      if (_currentModelIndex < _modelList.length - 1) {
+        _switchToFallbackModel();
+        _sendChatMessage(); 
+      } else {
+        _handleError(e);
+      }
     }
+  }
+
+  void _handleError(Object e) {
+    String msg = "Connection error. Please check your API key.";
+    if (e.toString().contains("403")) msg = "Access Denied. Check Google AI Studio permissions.";
+    setState(() => _messages.add({"role": "bot", "text": msg}));
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 200,
+          _scrollController.position.maxScrollExtent + 100,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut,
         );
       }
     });
   }
 
+  // --- UI BUILD ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, title: const Text("AI Coach")),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: const Text("SHIFT AI Coach", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        elevation: 0,
+      ),
       body: Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
+            child: ListView(
+              controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildStatusCard(),
-                  const SizedBox(height: 12),
-                  _buildAnalyzeButton(),
-                  if (_latestAnalysis != null) ...[
-                    const SizedBox(height: 12),
-                    _buildAnalysisCard(_latestAnalysis!),
-                  ],
-                  const SizedBox(height: 20),
-                  _buildChatList(),
-                ],
-              ),
+              children: [
+                _buildAnalyzeButton(),
+                if (_latestAnalysis != null) _buildAnalysisCard(),
+                const Divider(color: Colors.white10, height: 40),
+                ..._messages.map((m) => _chatBubble(m)),
+              ],
             ),
           ),
           _buildInputArea(),
@@ -175,121 +195,96 @@ JSON structure:
     );
   }
 
-  Widget _buildStatusCard() {
-    final s = _latestSession;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16)),
-      child: Text(
-        s == null ? "No sessions recorded." : "Ready to analyze session: ${s.title}",
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-      ),
-    );
-  }
-
   Widget _buildAnalyzeButton() {
     return SizedBox(
-      width: double.infinity, height: 48,
+      width: double.infinity,
       child: ElevatedButton(
         onPressed: _isAnalyzing ? null : _analyzeLatestSession,
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF085CEC), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-        child: _isAnalyzing ? const CircularProgressIndicator(color: Colors.white) : const Text("Analyze Latest Session"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF085CEC),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        child: _isAnalyzing 
+          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : const Text("Analyze Latest Session", style: TextStyle(color: Colors.white, letterSpacing: 1.1)),
       ),
     );
   }
 
-  Widget _buildAnalysisCard(Map<String, dynamic> data) {
+  Widget _buildAnalysisCard() {
     return Container(
+      margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF0B1120), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E293B))),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Session Insights", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("SESSION INSIGHTS", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+              Text(_latestAnalysis!["status"] ?? "", style: const TextStyle(color: Colors.white, fontSize: 12)),
+            ],
+          ),
           const SizedBox(height: 12),
-          _buildSection("Metrics Snapshot", data["snapshot"]),
-          _buildListSection("Observations", data["observations"]),
-          _buildListSection("Safety & Tips", data["safety"]),
+          ...(_latestAnalysis!["observations"] as List? ?? []).map((o) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text("• $o", style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          )),
+          const Divider(color: Colors.white10),
+          Text("TIP: ${_latestAnalysis!["safety"]?[0] ?? "Continue monitoring stats."}", 
+              style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontStyle: FontStyle.italic)),
         ],
       ),
     );
   }
 
-  Widget _buildSection(String title, Map snapshot) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-        const SizedBox(height: 8),
-        ...snapshot.entries.map((e) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(e.key.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(color: Colors.white60, fontSize: 10)),
-              Text(e.value.toString(), style: const TextStyle(color: Colors.white, fontSize: 11)),
-            ],
-          ),
-        )).toList(),
-      ],
-    );
-  }
-
-  Widget _buildListSection(String title, List list) {
-    if (list.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Text(title, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-        ...list.map((item) => Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text("• $item", style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        )),
-      ],
-    );
-  }
-
-  Widget _buildChatList() {
-    return ListView.builder(
-      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final isUser = _messages[index]["role"] == "user";
-        return Align(
-          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: isUser ? const Color(0xFF085CEC) : const Color(0xFF1A1C2E), borderRadius: BorderRadius.circular(12)),
-            child: Text(_messages[index]["text"]!, style: const TextStyle(color: Colors.white, fontSize: 13)),
-          ),
-        );
-      },
+  Widget _chatBubble(Map<String, String> m) {
+    bool isUser = m['role'] == 'user';
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isUser ? const Color(0xFF085CEC) : const Color(0xFF1F2937),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(m['text']!, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      ),
     );
   }
 
   Widget _buildInputArea() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _controller, style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: "Ask about this session...",
-                  hintStyle: const TextStyle(color: Colors.grey),
-                  filled: true, fillColor: const Color(0xFF1A1C2E),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 30),
+      color: Colors.black,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Ask about your data...",
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF1F2937),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               ),
             ),
-            IconButton(icon: const Icon(Icons.send, color: Color(0xFF085CEC)), onPressed: _sendChatMessage),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send_rounded, color: Color(0xFF085CEC), size: 28),
+            onPressed: _sendChatMessage,
+          ),
+        ],
       ),
     );
   }
