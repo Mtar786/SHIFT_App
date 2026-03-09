@@ -8,7 +8,7 @@ class LiveSessionScreen extends StatefulWidget {
   final double oxygen;
   final double temperature;
   final int quality;
-  final String alarms;
+  final List<String> alarms;
 
   const LiveSessionScreen({
     super.key,
@@ -27,6 +27,9 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
   bool isLiveSession = true;
   Timer? _timer;
   int _sessionSeconds = 0;
+
+  int _totalAlertCount = 0;   // To store the running total
+  bool _wasAlarmActive = false; // To prevent double-counting the same event
 
   final List<double> _bpmHistory = [];
   final List<double> _oxygenHistory = [];
@@ -52,6 +55,20 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
       if (mounted) {
         setState(() {
           _sessionSeconds++;
+
+          // --- NEW ALERT TRACKING LOGIC ---
+          bool isCurrentlyAlarming = widget.alarms.isNotEmpty && widget.alarms[0] != "OK";
+
+          // If it WASN'T alarming before, but it IS now -> That's a new alert event!
+          if (isCurrentlyAlarming && !_wasAlarmActive) {
+            _totalAlertCount++;
+            _wasAlarmActive = true;
+          }
+          // Reset the "active" flag once the alarm clears
+          else if (!isCurrentlyAlarming) {
+            _wasAlarmActive = false;
+          }
+
           if (widget.bpm > 0) _bpmHistory.add(widget.bpm);
           if (widget.oxygen > 0) _oxygenHistory.add(widget.oxygen);
           if (widget.temperature > 0) _tempHistory.add(widget.temperature);
@@ -85,7 +102,7 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
       avgOxygen: avgOxy,            // Passing new data
       avgTemperature: avgTemp,      // Passing new data
       peakHeatPercent: widget.quality,
-      alerts: (widget.alarms != "OK" && widget.alarms.isNotEmpty) ? 1 : 0,
+      alerts: _totalAlertCount,
     );
 
     SessionManager().addSession(newSession);
@@ -112,7 +129,7 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   Widget _buildLiveView() {
-    bool hasAlarm = widget.alarms != "OK" && widget.alarms.isNotEmpty;
+    bool hasAlarm = widget.alarms[0] != "OK" && widget.alarms.isNotEmpty;
 
     // --- DYNAMIC THRESHOLD LOGIC ---
     Color bpmColor = Colors.greenAccent;
@@ -153,7 +170,13 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
         ),
         const SizedBox(height: 20),
 
-        if (hasAlarm) _buildWarningBanner(widget.alarms),
+        Column(
+          children: [
+            if (hasAlarm)
+              for (var alarm in widget.alarms)
+                _buildWarningBanner(alarm), // Pass the single string, not the whole array
+          ],
+        ),
 
         // Row 1: Heart Rate & Blood Oxygen
         Row(
@@ -200,7 +223,7 @@ class LiveSessionScreenState extends State<LiveSessionScreen> {
                 value: widget.quality > 0 ? '${widget.quality}' : '--',
                 unit: 'system',
                 icon: Icons.shield,
-                color: widget.alarms == "OK" ? Colors.green : Colors.red,
+                color: widget.quality > 1000? Colors.green : Colors.red,
               ),
             ),
           ],

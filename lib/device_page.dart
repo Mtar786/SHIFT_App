@@ -34,7 +34,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   double blood_oxygen = 0.0;
   double temperature = 0.0;
   int quality = 0;
-  String alarms = "";
+  List<String> alarms = [];
 
   final GlobalKey<LiveSessionScreenState> _sessionKey = GlobalKey();
 
@@ -158,7 +158,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
             temperature = (data['t'] ?? 0.0).toDouble();
             quality = data['q'] ?? 0;
             if (data['a'] != null && (data['a'] as List).isNotEmpty) {
-              alarms = data['a'][0];
+              alarms = (data['a'] as List).cast<String>();
             }
           });
           debugPrint("Parsed Data: B:$bpm, O:$blood_oxygen, T:$temperature, Q:$quality, A:$alarms");

@@ -21,7 +21,7 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
   double _oxygen = 0.0;
   double _temperature = 0.0;
   int _quality = 0;
-  String _alarms = "OK";
+  List<String> _alarms = ["OK"];
 
   final GlobalKey<LiveSessionScreenState> _sessionKey = GlobalKey();
 
@@ -37,7 +37,7 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
       _quality = (data['q'] ?? 0).toInt();
 
       if (data['a'] != null && (data['a'] as List).isNotEmpty) {
-        _alarms = data['a'][0].toString();
+        _alarms = (data['a'] as List).cast<String>();
       }
     });
   }

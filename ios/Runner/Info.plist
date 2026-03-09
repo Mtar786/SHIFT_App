@@ -30,6 +30,12 @@
 	<string>This app needs Bluetooth to connect to your SHIFT vest sensors for real-time monitoring.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>This app needs Bluetooth to connect to your SHIFT vest sensors for real-time monitoring.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs location access to maintain a connection with your SHIFT vest sensors even when the app is in the background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app needs location access to maintain a connection with your SHIFT vest sensors.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs location access to discover and connect to your SHIFT vest sensors via Bluetooth.</string>
 	<key>NSUpdateUsageDescription</key>
 	<string>Required for background Bluetooth communication.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
@@ -57,11 +63,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs location access to discover and connect to your SHIFT vest sensors via Bluetooth.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs location access to maintain a connection with your SHIFT vest sensors even when the app is in the background.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app needs location access to maintain a connection with your SHIFT vest sensors.</string>
 </dict>
 </plist>
