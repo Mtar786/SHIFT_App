@@ -18,7 +18,7 @@ class _AIChatbotState extends State<AIChatbot> {
 
   // Gemeni API Models 
   final List<String> _modelList = [
-    'gemini-3.1-flash-lite-preview', // Best "Workhorse" for physiological stats
+    'gemini-3.1-flash-lite-preview', // Best "Workhorse" for physiological stat
     'gemini-3.1-pro-preview',       // Advanced reasoning (Migrated from 3.0 Pro)
     'gemini-1.5-flash',            // Reliable legacy fallback
   ];
@@ -32,6 +32,7 @@ class _AIChatbotState extends State<AIChatbot> {
       "text": "Hi — I’m your SHIFT AI Coach.\n\nTap Analyze Latest to review your performance metrics."
     }
   ];
+
 
   Map<String, dynamic>? _latestAnalysis;
   bool _isAnalyzing = false;
