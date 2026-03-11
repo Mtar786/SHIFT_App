@@ -46,3 +46,6 @@ app.*.map.json
 
 # Raspberry Pi Script
 pi_ble_script
+
+# API Secrets
+.env

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'session_manager.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AIChatbot extends StatefulWidget {
   const AIChatbot({super.key});
@@ -14,7 +15,7 @@ class _AIChatbotState extends State<AIChatbot> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  static const String _apiKey = "AIzaSyASJISScaVs5l6uG6jMLBGpkG2XstzEc_4";
+  final String _apiKey = dotenv.env['GEMINI_API_KEY'] ?? "";
 
   // Gemeni API Models 
   final List<String> _modelList = [

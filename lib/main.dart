@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'navigationBar.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() => runApp(const ShiftApp());
-
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load the environment variables from your .env file
+  await dotenv.load(fileName: ".env"); 
+  
+  runApp(const ShiftApp());
+}
 
 class ShiftApp extends StatelessWidget {
   const ShiftApp({super.key});
@@ -21,3 +28,4 @@ class ShiftApp extends StatelessWidget {
     );
   }
 }
+
